@@ -1,3 +1,5 @@
+// ignore_for_file: unused_local_variable, await_only_futures
+
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -30,6 +32,8 @@ class VideoEditorController extends ChangeNotifier {
   double _splitPosition = 0.0;
   double _speedMultiplier = 1.0;
   List<double> _splitPoints = [];
+  Uint8List? _processedThumbnail;
+  bool _isGeneratingProcessedThumbnail = false;
 
 
   // Getters
@@ -51,6 +55,7 @@ class VideoEditorController extends ChangeNotifier {
   double get splitPosition => _splitPosition;
   double get speedMultiplier => _speedMultiplier;
   List<double> get splitPoints => _splitPoints;
+  Uint8List? get processedThumbnail => _processedThumbnail;
 
   // Setters
   void setTrimStart(double value) {
@@ -120,6 +125,7 @@ class VideoEditorController extends ChangeNotifier {
     return (_trimEnd / _videoDuration) * _timelineWidth;
   }
 
+
   void setActiveTab(String tab) {
     _activeTab = tab;
     notifyListeners();
@@ -149,15 +155,66 @@ class VideoEditorController extends ChangeNotifier {
 
     try {
       _videoController?.dispose();
-      _videoController = VideoPlayerController.file(_selectedVideo!);
+
+      // Add video player options for better compatibility
+      _videoController = VideoPlayerController.file(
+        _selectedVideo!,
+        videoPlayerOptions: VideoPlayerOptions(
+          mixWithOthers: true,
+          allowBackgroundPlayback: false,
+        ),
+      );
+
+      // Initialize with error handling
       await _videoController!.initialize();
+
+      // Set video to pause initially to prevent auto-play issues
+      await _videoController!.pause();
+
       notifyListeners();
     } catch (e) {
-      _errorMessage = 'Error initializing video player: ${e.toString()}';
+      // More specific error handling
+      if (e.toString().contains('MediaCodec') ||
+          e.toString().contains('VideoRenderer')) {
+        _errorMessage =
+            'Video format not supported on this device. Please try a different video file.';
+      } else {
+        _errorMessage = 'Error initializing video player: ${e.toString()}';
+      }
+
+      // Clean up on error
+      _videoController?.dispose();
+      _videoController = null;
       notifyListeners();
     }
   }
 
+Future<bool> _isVideoFormatSupported() async {
+    if (_selectedVideo == null) return false;
+
+    try {
+      // Use FFprobe to check video format compatibility
+      final session = await FFmpegKit.execute(
+        '-i "${_selectedVideo!.path}" -hide_banner -f null -',
+      );
+
+      final logs = await session.getAllLogs();
+      String output = '';
+
+      for (var log in logs) {
+        output += await log.getMessage();
+      }
+
+      // Check if video has supported codec
+      return output.contains('Video:') &&
+          (output.contains('h264') ||
+              output.contains('avc') ||
+              output.contains('mp4') ||
+              output.contains('mov'));
+    } catch (e) {
+      return false;
+    }
+  }
 
   // Add this method to your VideoEditorController class
 
@@ -276,68 +333,153 @@ class VideoEditorController extends ChangeNotifier {
     }
   }
 
-  Future<void> pickVideo() async {
+Future<void> pickVideo() async {
     try {
-      // Request storage permission
-      final permission = await Permission.storage.request();
-      if (!permission.isGranted) {
+      _errorMessage = null;
+      notifyListeners();
+
+      // Request storage permissions
+      Map<Permission, PermissionStatus> statuses =
+          await [
+            Permission.storage,
+            if (Platform.isAndroid) Permission.manageExternalStorage,
+          ].request();
+
+      // Check if any permission is granted
+      bool hasPermission = statuses.values.any((status) => status.isGranted);
+
+      if (!hasPermission) {
         _errorMessage = 'Storage permission is required to select videos';
         notifyListeners();
         return;
       }
 
+      // Rest of your pick video code...
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.video,
         allowMultiple: false,
+        allowCompression: false,
       );
 
       if (result != null && result.files.single.path != null) {
-        _selectedVideo = File(result.files.single.path!);
-        await _getVideoDuration();
-        await _initializeVideoPlayer();
-        await _generateThumbnails();
-        _trimStart = 0.0;
-        _trimEnd = _videoDuration > 30 ? 30.0 : _videoDuration;
-        _rotationDegrees = 0;
+        final String filePath = result.files.single.path!;
+        final File videoFile = File(filePath);
+
+        // Verify file exists and is readable
+        if (await videoFile.exists()) {
+          _selectedVideo = videoFile;
+
+          bool isSupported = await _isVideoFormatSupported();
+          if (!isSupported) {
+            _errorMessage =
+                'Video format not supported. Please select an MP4 or MOV file.';
+            _selectedVideo = null;
+            notifyListeners();
+            return;
+          }
+
+          // Reset other state variables
+          _processedVideo = null;
+          _processedThumbnail = null;
+          _trimStart = 0.0;
+          _rotationDegrees = 0;
+          _splitPoints.clear();
+          _speedMultiplier = 1.0;
+
+          // Initialize video player and get duration
+          await _initializeVideoPlayer();
+          await _getVideoDuration();
+
+          // Set default trim end to video duration or 30 seconds, whichever is smaller
+          _trimEnd = _videoDuration > 30.0 ? 30.0 : _videoDuration;
+
+          // Generate thumbnails
+          await _generateThumbnails();
+
+          notifyListeners();
+        } else {
+          _errorMessage = 'Selected video file is not accessible';
+          notifyListeners();
+        }
+      } else {
+        // User cancelled or no file selected
         _errorMessage = null;
         notifyListeners();
       }
     } catch (e) {
-      _errorMessage = 'Error picking video: ${e.toString()}';
+      _errorMessage = 'Error selecting video: ${e.toString()}';
       notifyListeners();
     }
   }
 
-  Future<void> _getVideoDuration() async {
+ Future<void> _getVideoDuration() async {
     if (_selectedVideo == null) return;
 
     try {
-      await FFmpegKit.execute('-i "${_selectedVideo!.path}" -f null -').then((
-        session,
-      ) async {
-        final output = await session.getOutput();
-        if (output != null) {
-          final durationRegex = RegExp(
-            r'Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})',
-          );
-          final match = durationRegex.firstMatch(output);
+      // Use FFprobe-style command to get duration more reliably
+      final session = await FFmpegKit.execute(
+        '-i "${_selectedVideo!.path}" -hide_banner -f null -',
+      );
 
-          if (match != null) {
-            final hours = int.parse(match.group(1)!);
-            final minutes = int.parse(match.group(2)!);
-            final seconds = double.parse(match.group(3)!);
-            _videoDuration = hours * 3600 + minutes * 60 + seconds;
+      final logs = await session.getAllLogs();
+      String output = '';
+
+      for (var log in logs) {
+        output += await log.getMessage();
+      }
+
+      if (output.isNotEmpty) {
+        // Look for duration in the output
+        final durationRegex = RegExp(
+          r'Duration: (\d{2}):(\d{2}):(\d{2}\.\d{2})',
+        );
+        final match = durationRegex.firstMatch(output);
+
+        if (match != null) {
+          final hours = int.parse(match.group(1)!);
+          final minutes = int.parse(match.group(2)!);
+          final seconds = double.parse(match.group(3)!);
+          _videoDuration = hours * 3600 + minutes * 60 + seconds;
+        } else {
+          // Fallback: try to get duration from video player controller
+          if (_videoController != null &&
+              _videoController!.value.isInitialized) {
+            _videoDuration =
+                _videoController!.value.duration.inMilliseconds / 1000.0;
+          } else {
+            _videoDuration = 30.0; // Default fallback
           }
         }
-      });
+      } else {
+        // Use video controller as fallback
+        if (_videoController != null && _videoController!.value.isInitialized) {
+          _videoDuration =
+              _videoController!.value.duration.inMilliseconds / 1000.0;
+        } else {
+          _videoDuration = 30.0; // Default fallback
+        }
+      }
+
+      notifyListeners();
     } catch (e) {
-      _videoDuration = 30.0; // Default fallback
+      // Fallback to video controller or default
+      try {
+        if (_videoController != null && _videoController!.value.isInitialized) {
+          _videoDuration =
+              _videoController!.value.duration.inMilliseconds / 1000.0;
+        } else {
+          _videoDuration = 30.0;
+        }
+      } catch (e2) {
+        _videoDuration = 30.0;
+      }
+      notifyListeners();
     }
   }
   
   
 
-  Future<void> processAndSaveVideo() async {
+Future<void> processAndSaveVideo() async {
     if (_selectedVideo == null) {
       _errorMessage = 'Please select a video first';
       notifyListeners();
@@ -367,6 +509,8 @@ class VideoEditorController extends ChangeNotifier {
 
         if (result == true) {
           _processedVideo = File(outputPath);
+          // Generate thumbnail for the processed video
+          await _generateProcessedThumbnail(outputPath);
           _showSuccessDialog = true;
           _errorMessage = null;
         } else {
@@ -617,9 +761,36 @@ class VideoEditorController extends ChangeNotifier {
     }
   }
 
+  Future<void> _generateProcessedThumbnail(String videoPath) async {
+    _isGeneratingProcessedThumbnail = true;
+    _processedThumbnail = null;
+    notifyListeners();
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final thumbnailPath = '${tempDir.path}/processed_thumbnail.jpg';
+
+      await FFmpegKit.execute(
+        '-i "$videoPath" -ss 00:00:01 -vframes 1 -q:v 2 "$thumbnailPath"',
+      );
+
+      final File thumbnailFile = File(thumbnailPath);
+      if (await thumbnailFile.exists()) {
+        _processedThumbnail = await thumbnailFile.readAsBytes();
+        await thumbnailFile.delete();
+      }
+    } catch (e) {
+      print('Error generating processed thumbnail: $e');
+    } finally {
+      _isGeneratingProcessedThumbnail = false;
+      notifyListeners();
+    }
+  }
+
   @override
   void dispose() {
     _videoController?.dispose();
+    _processedThumbnail = null;
     super.dispose();
   }
 

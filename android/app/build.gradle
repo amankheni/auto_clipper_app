@@ -1,0 +1,157 @@
+plugins {
+    id "com.android.application"
+    id "org.jetbrains.kotlin.android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// Load keystore properties
+def keystoreProperties = new Properties()
+def keystorePropertiesFile = rootProject.file('key.properties')
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+}
+
+android {
+    namespace 'com.honorixinnovation.auto_clipper'
+    compileSdk 35
+    ndkVersion flutter.ndkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+
+    kotlinOptions {
+        jvmTarget = '11'
+    }
+
+    defaultConfig {
+        applicationId "com.honorixinnovation.auto_clipper"
+        minSdk 24
+        targetSdk 34
+        versionCode flutter.versionCode
+        versionName flutter.versionName
+        
+        // Performance optimizations
+        multiDexEnabled true
+        
+        // Optimize for specific architectures
+        ndk {
+            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+        }
+        
+        // Manifest placeholders - Remove the deprecated FlutterApplication
+        manifestPlaceholders = [
+            'largeHeap': 'true'
+        ]
+    }
+
+    signingConfigs {
+        release {
+            keyAlias keystoreProperties['keyAlias']
+            keyPassword keystoreProperties['keyPassword']
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
+            storePassword keystoreProperties['storePassword']
+        }
+    }
+
+    buildTypes {
+        debug {
+            applicationIdSuffix ".debug"
+            debuggable true
+            minifyEnabled false
+            shrinkResources false
+            multiDexEnabled true
+            
+            // Optimize debug builds
+            renderscriptOptimLevel 3
+            
+            // Add debug-specific configurations
+            buildConfigField "boolean", "DEBUG_MODE", "true"
+        }
+        
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.release
+            
+            // ProGuard configuration
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+            
+            // Release optimizations
+            renderscriptOptimLevel 3
+            buildConfigField "boolean", "DEBUG_MODE", "false"
+            
+            // R8 is enabled by default when minifyEnabled is true
+            // No need to explicitly set enableR8.fullMode
+        }
+    }
+    
+    // Packaging options to handle native libraries
+    packagingOptions {
+        pickFirst '**/libc++_shared.so'
+        pickFirst '**/libjsc.so'
+        pickFirst '**/libfbjni.so'
+        pickFirst '**/libflutter.so'
+        pickFirst '**/libglog.so'
+        pickFirst '**/libgtest.so'
+        pickFirst '**/libyoga.so'
+        
+        // Exclude unnecessary files
+        exclude 'META-INF/DEPENDENCIES'
+        exclude 'META-INF/LICENSE'
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/license.txt'
+        exclude 'META-INF/NOTICE'
+        exclude 'META-INF/NOTICE.txt'
+        exclude 'META-INF/notice.txt'
+        exclude 'META-INF/ASL2.0'
+        exclude 'META-INF/*.kotlin_module'
+    }
+    
+    // Lint options
+    lint {
+        checkReleaseBuilds false
+        abortOnError false
+        disable 'InvalidPackage'
+        disable 'MissingTranslation'
+    }
+    
+    // Build optimization
+    buildFeatures {
+        buildConfig true
+    }
+}
+
+flutter {
+    source '../..'
+}
+
+dependencies {
+    implementation 'androidx.multidex:multidex:2.0.1'
+    implementation 'androidx.lifecycle:lifecycle-process:2.8.6'
+    implementation 'androidx.core:core-ktx:1.13.1'
+    
+    // FIXED: Replace deprecated Play Core libraries with compatible alternatives
+    // Use Play Feature Delivery if you need dynamic feature modules
+    implementation 'com.google.android.play:feature-delivery:2.1.0'
+    implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
+    
+    // Use Play Asset Delivery if you need asset packs
+    implementation 'com.google.android.play:asset-delivery:2.2.2'
+    implementation 'com.google.android.play:asset-delivery-ktx:2.2.2'
+    
+    // Use Play Install Referrer if you need install referrer info
+    implementation 'com.android.installreferrer:installreferrer:2.2'
+    
+    // Use Play In-App Review if you need in-app reviews
+    implementation 'com.google.android.play:review:2.0.2'
+    implementation 'com.google.android.play:review-ktx:2.0.2'
+    
+    // Use Play In-App Update if you need in-app updates
+    implementation 'com.google.android.play:app-update:2.1.0'
+    implementation 'com.google.android.play:app-update-ktx:2.1.0'
+    
+    // Performance monitoring (optional)
+    // implementation 'androidx.benchmark:benchmark-junit4:1.1.1'
+}

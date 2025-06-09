@@ -1,4 +1,4 @@
-package com.example.auto_clipper_app
+package com.honorixinnovation.auto_clipper
 
 import io.flutter.embedding.android.FlutterActivity
 
