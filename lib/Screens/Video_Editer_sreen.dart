@@ -1,6 +1,6 @@
 // // ignore_for_file: deprecated_member_use
 
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_super_parameters
 
 import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Video_editor_controller.dart';

@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:gal/gal.dart';
+import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:memory_info/memory_info.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
@@ -357,7 +358,7 @@ Future<void> splitVideoClipWithOverlays(
     }
   }
 
-  /// Main method to split video into clips
+// Modified splitVideo method - save to session storage instead of gallery
   Future<void> splitVideo({
     required String videoPath,
     required int clipDurationInSeconds,
@@ -371,16 +372,16 @@ Future<void> splitVideoClipWithOverlays(
     double fontSize = 24.0,
     String textColor = 'white',
     bool isPortraitMode = false,
-}) async {
+  }) async {
     try {
       // Check file size first
       final file = File(videoPath);
       final fileSizeInMB = await file.length() / (1024 * 1024);
 
       if (fileSizeInMB > 500) {
-        // Limit to 500MB
         throw Exception('Video file too large. Please use a smaller video.');
       }
+
       _updateProgress(
         VideoSplitterProgress(
           currentClip: 0,
@@ -408,16 +409,12 @@ Future<void> splitVideoClipWithOverlays(
         ),
       );
 
-      final tempDir = await getTemporaryDirectory();
-      final outputDir = Directory('${tempDir.path}/video_clips');
-      if (await outputDir.exists()) {
-        await outputDir.delete(recursive: true);
-      }
-      await outputDir.create();
+      // Create session directory instead of temp directory
+      final sessionDir = await _createVideoSession();
 
       for (int i = 0; i < totalClips; i++) {
         final startTime = i * clipDurationInSeconds;
-        final outputPath = '${outputDir.path}/clip_${i + 1}.mp4';
+        final outputPath = '${sessionDir.path}/clip_${i + 1}.mp4';
         final textContent = useTextOverlay ? '$textPrefix ${i + 1}' : '';
 
         _updateProgress(
@@ -430,7 +427,7 @@ Future<void> splitVideoClipWithOverlays(
           ),
         );
 
-        // Use the enhanced method with all overlays
+        // Process video clip
         if (useWatermark || useTextOverlay || isPortraitMode) {
           await splitVideoClipWithOverlays(
             videoPath,
@@ -456,22 +453,15 @@ Future<void> splitVideoClipWithOverlays(
           );
         }
 
-        try {
-          await Gal.putVideo(outputPath);
-          _updateProgress(
-            VideoSplitterProgress(
-              currentClip: i + 1,
-              totalClips: totalClips,
-              progress: (i + 1) / totalClips,
-              statusText:
-                  'Clip ${i + 1} saved successfully! Processing next clip...',
-              isProcessing: true,
-            ),
-          );
-          print('Successfully saved clip ${i + 1} to gallery');
-        } catch (e) {
-          print('Failed to save clip ${i + 1} to gallery: $e');
-        }
+        _updateProgress(
+          VideoSplitterProgress(
+            currentClip: i + 1,
+            totalClips: totalClips,
+            progress: (i + 1) / totalClips,
+            statusText: 'Clip ${i + 1} processed successfully!',
+            isProcessing: true,
+          ),
+        );
       }
 
       _updateProgress(
@@ -480,15 +470,14 @@ Future<void> splitVideoClipWithOverlays(
           totalClips: totalClips,
           progress: 1.0,
           statusText:
-              'Successfully split video into $totalClips clips and saved to gallery!',
+              'Successfully split video into $totalClips clips! Check Downloads section.',
           isProcessing: false,
         ),
       );
 
-      await outputDir.delete(recursive: true);
-    } catch (e) {
-
       
+      // _showProcessingComplete();
+    } catch (e) {
       _updateProgress(
         VideoSplitterProgress(
           currentClip: 0,
@@ -497,9 +486,8 @@ Future<void> splitVideoClipWithOverlays(
           statusText: 'Error: $e',
           isProcessing: false,
         ),
-        
       );
-      
+
       if (e.toString().contains('OutOfMemory') ||
           e.toString().contains('SIGSEGV')) {
         throw Exception('Not enough memory to process this video');
@@ -508,6 +496,25 @@ Future<void> splitVideoClipWithOverlays(
     }
   }
 
+  // New method to create session directory
+  Future<Directory> _createVideoSession() async {
+    final appDir = await getApplicationDocumentsDirectory();
+    final videosDir = Directory('${appDir.path}/processed_videos');
+
+    if (!await videosDir.exists()) {
+      await videosDir.create(recursive: true);
+    }
+
+    // Create session with timestamp
+    final timestamp = DateTime.now().millisecondsSinceEpoch;
+    final sessionDir = Directory('${videosDir.path}/session_$timestamp');
+    await sessionDir.create(recursive: true);
+
+    return sessionDir;
+  }
+  
+
+  
   void _updateProgress(VideoSplitterProgress progress) {
     // Force garbage collection periodically
     if (progress.currentClip % 3 == 0) {

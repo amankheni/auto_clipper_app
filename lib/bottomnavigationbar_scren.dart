@@ -1,7 +1,8 @@
-// ignore_for_file: library_private_types_in_public_api
+// ignore_for_file: library_private_types_in_public_api, deprecated_member_use
 
 import 'package:auto_clipper_app/Screens/Split_screen.dart';
 import 'package:auto_clipper_app/Screens/Video_Editer_sreen.dart';
+import 'package:auto_clipper_app/Screens/video_download_screen.dart';
 import 'package:flutter/material.dart';
 
 class BottomNavigationScreen extends StatefulWidget {
@@ -13,10 +14,9 @@ class BottomNavigationScreen extends StatefulWidget {
 
 class _BottomNavigationScreenState extends State<BottomNavigationScreen>
     with AutomaticKeepAliveClientMixin {
-  
   int _currentIndex = 0;
   late PageController _pageController;
-  
+
   // Create screens lazily to improve performance
   late final List<Widget> _screens;
 
@@ -27,11 +27,12 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 0);
-    
+
     // Initialize screens
     _screens = [
       const VideoSplitterScreen(),
       const VideoEditorScreen(),
+      VideoDownloadScreen(),
     ];
   }
 
@@ -63,16 +64,20 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    
+
     return Scaffold(
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,
         physics: const ClampingScrollPhysics(), // Better performance
-        children: _screens.map((screen) => 
-          // Wrap each screen to maintain state
-          _KeepAliveWrapper(child: screen)
-        ).toList(),
+        children:
+            _screens
+                .map(
+                  (screen) =>
+                  // Wrap each screen to maintain state
+                  _KeepAliveWrapper(child: screen),
+                )
+                .toList(),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -101,22 +106,27 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
           unselectedFontSize: 12,
           type: BottomNavigationBarType.fixed,
           elevation: 0, // Remove default elevation
-          selectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w600,
-          ),
-          unselectedLabelStyle: const TextStyle(
-            fontWeight: FontWeight.w400,
-          ),
+          selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
+          unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w400),
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.content_cut),
-              activeIcon: Icon(Icons.content_cut, size: 28), // Larger active icon
+              activeIcon: Icon(
+                Icons.content_cut,
+                size: 28,
+              ), // Larger active icon
               label: 'Split',
             ),
+
             BottomNavigationBarItem(
               icon: Icon(Icons.video_settings),
               activeIcon: Icon(Icons.video_settings, size: 28),
               label: 'Edit',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.download_done_outlined),
+              activeIcon: Icon(Icons.download, size: 28),
+              label: 'Download',
             ),
           ],
         ),
@@ -128,7 +138,7 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
 // Helper widget to keep pages alive
 class _KeepAliveWrapper extends StatefulWidget {
   final Widget child;
-  
+
   const _KeepAliveWrapper({required this.child});
 
   @override
@@ -137,7 +147,6 @@ class _KeepAliveWrapper extends StatefulWidget {
 
 class _KeepAliveWrapperState extends State<_KeepAliveWrapper>
     with AutomaticKeepAliveClientMixin {
-  
   @override
   bool get wantKeepAlive => true;
 

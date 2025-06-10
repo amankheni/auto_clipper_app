@@ -5,6 +5,7 @@ import 'dart:typed_data';
 
 import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Split_Controller.dart';
+import 'package:auto_clipper_app/Screens/video_download_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:path/path.dart' as path;
@@ -246,11 +247,11 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                       _buildDurationInput(),
                       SizedBox(height: 24.h),
                       _buildWatermarkSection(),
-                      SizedBox(height: 24.h),
-                      _buildTextOverlaySection(),
+                      // SizedBox(height: 24.h),
+                      // _buildTextOverlaySection(),
                       SizedBox(height: 32.h),
-                      
-                      _buildSplitButton(),
+
+                      _buildNavigationSection(),
                       SizedBox(height: 24.h),
                       if (_isProcessing) _buildProgressSection(),
                       if (_statusText.isNotEmpty) _buildStatusSection(),
@@ -344,7 +345,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
-    Widget _buildVideoSelection() {
+  Widget _buildVideoSelection() {
     return Container(
       decoration: BoxDecoration(
         gradient:
@@ -575,7 +576,6 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     }
   }
 
-
   Widget _buildOrientationButton({
     required IconData icon,
     required String label,
@@ -614,7 +614,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
-   Widget _buildTextOverlaySection() {
+  Widget _buildTextOverlaySection() {
     return Container(
       padding: EdgeInsets.all(24.r),
       decoration: BoxDecoration(
@@ -701,7 +701,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                 ),
                 contentPadding: EdgeInsets.all(16.r),
               ),
-              items:  [
+              items: [
                 DropdownMenuItem(
                   value: TextPosition.topCenter,
                   child: Text('Top Center'),
@@ -764,7 +764,6 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
       ),
     );
   }
-  
 
   Widget _buildDurationInput() {
     return Container(
@@ -1165,6 +1164,192 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
+  Widget _buildNavigationSection() {
+    return Container(
+      padding: EdgeInsets.all(16.r),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildSplitButton(), // Your existing split button
+          ),
+          SizedBox(width: 12.w),
+          Container(
+            height: 60.h,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+              ),
+              borderRadius: BorderRadius.circular(30.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Color(0xFF667EEA).withOpacity(0.3),
+                  blurRadius: 20.r,
+                  offset: Offset(0, 8.h),
+                ),
+              ],
+            ),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => VideoDownloadScreen(),
+                    ),
+                  );
+                },
+                borderRadius: BorderRadius.circular(30.r),
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.download, color: Colors.white, size: 24.sp),
+                      SizedBox(width: 8.w),
+                      Text(
+                        'Downloads',
+                        style: TextStyle(
+                          fontSize: 16.sp,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // // Add this method to show success dialog after processing
+  // void _showProcessingComplete() {
+  //     showDialog(
+  //       context: context,
+  //       barrierDismissible: false,
+  //       builder:
+  //           (context) => AlertDialog(
+  //             shape: RoundedRectangleBorder(
+  //               borderRadius: BorderRadius.circular(16.r),
+  //             ),
+  //             title: Row(
+  //               children: [
+  //                 Container(
+  //                   padding: EdgeInsets.all(8.r),
+  //                   decoration: BoxDecoration(
+  //                     color: Colors.green.shade100,
+  //                     shape: BoxShape.circle,
+  //                   ),
+  //                   child: Icon(
+  //                     Icons.check_circle,
+  //                     color: Colors.green,
+  //                     size: 24.sp,
+  //                   ),
+  //                 ),
+  //                 SizedBox(width: 12.w),
+  //                 Text(
+  //                   'Processing Complete!',
+  //                   style: TextStyle(
+  //                     fontSize: 18.sp,
+  //                     fontWeight: FontWeight.bold,
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //             content: Column(
+  //               mainAxisSize: MainAxisSize.min,
+  //               crossAxisAlignment: CrossAxisAlignment.start,
+  //               children: [
+  //                 Text(
+  //                   'Your video has been successfully split into clips.',
+  //                   style: TextStyle(
+  //                     fontSize: 14.sp,
+  //                     color: Colors.grey.shade700,
+  //                   ),
+  //                 ),
+  //                 SizedBox(height: 12.h),
+  //                 Container(
+  //                   padding: EdgeInsets.all(12.r),
+  //                   decoration: BoxDecoration(
+  //                     color: Colors.blue.shade50,
+  //                     borderRadius: BorderRadius.circular(8.r),
+  //                     border: Border.all(color: Colors.blue.shade200),
+  //                   ),
+  //                   child: Row(
+  //                     children: [
+  //                       Icon(
+  //                         Icons.info_outline,
+  //                         color: Colors.blue.shade600,
+  //                         size: 20.sp,
+  //                       ),
+  //                       SizedBox(width: 8.w),
+  //                       Expanded(
+  //                         child: Text(
+  //                           'Videos are ready to download in the Downloads section.',
+  //                           style: TextStyle(
+  //                             fontSize: 13.sp,
+  //                             color: Colors.blue.shade700,
+  //                           ),
+  //                         ),
+  //                       ),
+  //                     ],
+  //                   ),
+  //                 ),
+  //               ],
+  //             ),
+  //             actions: [
+  //               TextButton(
+  //                 onPressed: () => Navigator.pop(context),
+  //                 child: Text(
+  //                   'OK',
+  //                   style: TextStyle(
+  //                     color: Colors.grey.shade600,
+  //                     fontWeight: FontWeight.w600,
+  //                   ),
+  //                 ),
+  //               ),
+  //               ElevatedButton(
+  //                 onPressed: () {
+  //                   Navigator.pop(context);
+  //                   Navigator.push(
+  //                     context,
+  //                     MaterialPageRoute(
+  //                       builder: (context) => VideoDownloadScreen(),
+  //                     ),
+  //                   );
+  //                 },
+  //                 style: ElevatedButton.styleFrom(
+  //                   backgroundColor: Colors.blue,
+  //                   foregroundColor: Colors.white,
+  //                   shape: RoundedRectangleBorder(
+  //                     borderRadius: BorderRadius.circular(8.r),
+  //                   ),
+  //                   padding: EdgeInsets.symmetric(
+  //                     horizontal: 16.w,
+  //                     vertical: 8.h,
+  //                   ),
+  //                 ),
+  //                 child: Row(
+  //                   mainAxisSize: MainAxisSize.min,
+  //                   children: [
+  //                     Icon(Icons.download, size: 18.sp),
+  //                     SizedBox(width: 6.w),
+  //                     Text(
+  //                       'View Downloads',
+  //                       style: TextStyle(fontWeight: FontWeight.w600),
+  //                     ),
+  //                   ],
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //     );
+  //   }
+
   Widget _buildProgressSection() {
     return Container(
       padding: EdgeInsets.all(24.r),
@@ -1364,7 +1549,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
- @override
+  @override
   void dispose() {
     _durationController.dispose();
     _textController.dispose(); // Add this line
@@ -1372,6 +1557,4 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     _rotationController.dispose();
     super.dispose();
   }
-
 }
-
