@@ -6,10 +6,13 @@ import 'dart:typed_data';
 import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Split_Controller.dart';
 import 'package:auto_clipper_app/Screens/video_download_screen.dart';
+import 'package:auto_clipper_app/widget/Custom_Slider_ThumbShape.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:path/path.dart' as path;
 import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:percent_indicator/percent_indicator.dart';
+import 'package:shimmer/shimmer.dart';
 
 class VideoSplitterScreen extends StatefulWidget {
   const VideoSplitterScreen({super.key});
@@ -146,6 +149,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     }
   }
 
+ // Update your startSplitting method to call the success dialog
   Future<void> _startSplitting() async {
     if (_selectedVideoPath == null) {
       _showError('Please select a video first');
@@ -196,11 +200,15 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
             .substring(2), // Convert Color to hex
         isPortraitMode: _isPortraitMode,
       );
+
+      // After successful completion, call the success dialog
+      if (!_isProcessing && _statusText.toLowerCase().contains('completed')) {
+        _showSuccessDialog();
+      }
     } catch (e) {
       _showError('Error splitting video: $e');
     }
   }
-
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -254,6 +262,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                       _buildNavigationSection(),
                       SizedBox(height: 24.h),
                       if (_isProcessing) _buildProgressSection(),
+                      SizedBox(height: 7.h),
                       if (_statusText.isNotEmpty) _buildStatusSection(),
                     ],
                   ),
@@ -614,156 +623,6 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
-  Widget _buildTextOverlaySection() {
-    return Container(
-      padding: EdgeInsets.all(24.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowLight,
-            blurRadius: 20.r,
-            offset: Offset(0, 8.h),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(8.r),
-                decoration: BoxDecoration(
-                  gradient: AppColors.accentGradient,
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Icon(
-                  Icons.text_fields,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Text(
-                  'Text Overlay',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-              ),
-              Switch(
-                value: _useTextOverlay,
-                onChanged:
-                    _isProcessing
-                        ? null
-                        : (value) {
-                          setState(() {
-                            _useTextOverlay = value;
-                          });
-                        },
-                activeColor: AppColors.primaryPink,
-              ),
-            ],
-          ),
-          if (_useTextOverlay) ...[
-            SizedBox(height: 20.h),
-            // Text prefix input
-            TextField(
-              controller: _textController,
-              enabled: !_isProcessing,
-              decoration: InputDecoration(
-                labelText: 'Text Prefix (e.g., Part, Clip)',
-                hintText: 'Part',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                contentPadding: EdgeInsets.all(16.r),
-              ),
-              onChanged: (value) {
-                setState(() {
-                  _textPrefix = value.isEmpty ? 'Part' : value;
-                });
-              },
-            ),
-            SizedBox(height: 16.h),
-            // Text position dropdown
-            DropdownButtonFormField<TextPosition>(
-              value: _textPosition,
-              decoration: InputDecoration(
-                labelText: 'Text Position',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                contentPadding: EdgeInsets.all(16.r),
-              ),
-              items: [
-                DropdownMenuItem(
-                  value: TextPosition.topCenter,
-                  child: Text('Top Center'),
-                ),
-                DropdownMenuItem(
-                  value: TextPosition.topLeft,
-                  child: Text('Top Left'),
-                ),
-                DropdownMenuItem(
-                  value: TextPosition.topRight,
-                  child: Text('Top Right'),
-                ),
-                DropdownMenuItem(
-                  value: TextPosition.bottomCenter,
-                  child: Text('Bottom Center'),
-                ),
-                DropdownMenuItem(
-                  value: TextPosition.bottomLeft,
-                  child: Text('Bottom Left'),
-                ),
-                DropdownMenuItem(
-                  value: TextPosition.bottomRight,
-                  child: Text('Bottom Right'),
-                ),
-              ],
-              onChanged:
-                  _isProcessing
-                      ? null
-                      : (value) {
-                        setState(() {
-                          _textPosition = value!;
-                        });
-                      },
-            ),
-            SizedBox(height: 16.h),
-            // Font size slider
-            Row(
-              children: [
-                Text('Font Size: ${_fontSize.round()}px'),
-                Expanded(
-                  child: Slider(
-                    value: _fontSize,
-                    min: 16.0,
-                    max: 48.0,
-                    divisions: 16,
-                    onChanged:
-                        _isProcessing
-                            ? null
-                            : (value) {
-                              setState(() {
-                                _fontSize = value;
-                              });
-                            },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
-      ),
-    );
-  }
 
   Widget _buildDurationInput() {
     return Container(
@@ -880,234 +739,592 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
   Widget _buildWatermarkSection() {
     return Container(
-      padding: EdgeInsets.all(24.r),
+      margin: EdgeInsets.symmetric(horizontal: 2.w, vertical: 8.h),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20.r),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Colors.white, Colors.grey.shade50],
+        ),
+        borderRadius: BorderRadius.circular(24.r),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowLight,
-            blurRadius: 20.r,
-            offset: Offset(0, 8.h),
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 30.r,
+            offset: Offset(0, 10.h),
+            spreadRadius: 0,
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10.r,
+            offset: Offset(0, 4.h),
+            spreadRadius: 0,
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(24.r),
+        child: Container(
+          padding: EdgeInsets.all(28.r),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: EdgeInsets.all(8.r),
-                decoration: BoxDecoration(
-                  gradient: AppColors.accentGradient,
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Icon(Icons.image, color: Colors.white, size: 20.sp),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: Text(
-                  'Watermark Settings',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
+              // Header Section
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(12.r),
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          AppColors.primaryPink,
+                          AppColors.primaryPink.withOpacity(0.8),
+                        ],
+                      ),
+                      borderRadius: BorderRadius.circular(16.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryPink.withOpacity(0.3),
+                          blurRadius: 12.r,
+                          offset: Offset(0, 6.h),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.layers_rounded,
+                      color: Colors.white,
+                      size: 24.sp,
+                    ),
                   ),
-                ),
+                  SizedBox(width: 16.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Watermark Settings',
+                          style: TextStyle(
+                            fontSize: 20.sp,
+                            fontWeight: FontWeight.bold,
+                            color: AppColors.textPrimary,
+                            letterSpacing: -0.5,
+                          ),
+                        ),
+                        SizedBox(height: 2.h),
+                        Text(
+                          'Customize your watermark appearance',
+                          style: TextStyle(
+                            fontSize: 13.sp,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Animated Toggle Switch
+                  AnimatedContainer(
+                    duration: Duration(milliseconds: 300),
+                    curve: Curves.easeInOut,
+                    child: GestureDetector(
+                      onTap:
+                          _isProcessing
+                              ? null
+                              : () {
+                                setState(() {
+                                  _useWatermark = !_useWatermark;
+                                });
+                              },
+                      child: AnimatedContainer(
+                        duration: Duration(milliseconds: 300),
+                        width: 60.w,
+                        height: 32.h,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(16.r),
+                          gradient: LinearGradient(
+                            colors:
+                                _useWatermark
+                                    ? [
+                                      AppColors.primaryPink,
+                                      AppColors.primaryPink.withOpacity(0.8),
+                                    ]
+                                    : [
+                                      Colors.grey.shade300,
+                                      Colors.grey.shade400,
+                                    ],
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: (_useWatermark
+                                      ? AppColors.primaryPink
+                                      : Colors.grey)
+                                  .withOpacity(0.3),
+                              blurRadius: 8.r,
+                              offset: Offset(0, 4.h),
+                            ),
+                          ],
+                        ),
+                        child: AnimatedAlign(
+                          duration: Duration(milliseconds: 300),
+                          alignment:
+                              _useWatermark
+                                  ? Alignment.centerRight
+                                  : Alignment.centerLeft,
+                          child: Container(
+                            width: 26.w,
+                            height: 26.h,
+                            margin: EdgeInsets.all(3.r),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(13.r),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.1),
+                                  blurRadius: 4.r,
+                                  offset: Offset(0, 2.h),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              _useWatermark ? Icons.check : Icons.close,
+                              size: 14.sp,
+                              color:
+                                  _useWatermark
+                                      ? AppColors.primaryPink
+                                      : Colors.grey,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              Switch(
-                value: _useWatermark,
-                onChanged:
-                    _isProcessing
-                        ? null
-                        : (value) {
-                          setState(() {
-                            _useWatermark = value;
-                          });
-                        },
-                activeColor: AppColors.primaryPink,
+
+              // Expandable Content
+              AnimatedSize(
+                duration: Duration(milliseconds: 400),
+                curve: Curves.easeInOutCubic,
+                child:
+                    _useWatermark
+                        ? Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(height: 32.h),
+
+                            // Watermark File Selection
+                            Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20.r),
+                                border: Border.all(
+                                  color:
+                                      _selectedWatermarkPath != null
+                                          ? AppColors.primaryPink
+                                          : Colors.grey.shade300,
+                                  width: 2.w,
+                                ),
+                                gradient:
+                                    _selectedWatermarkPath != null
+                                        ? LinearGradient(
+                                          colors: [
+                                            AppColors.primaryPink.withOpacity(
+                                              0.05,
+                                            ),
+                                            AppColors.primaryPink.withOpacity(
+                                              0.02,
+                                            ),
+                                          ],
+                                        )
+                                        : null,
+                              ),
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _isProcessing ? null : _pickWatermark,
+                                  borderRadius: BorderRadius.circular(20.r),
+                                  child: Container(
+                                    padding: EdgeInsets.all(20.r),
+                                    child: Row(
+                                      children: [
+                                        AnimatedContainer(
+                                          duration: Duration(milliseconds: 300),
+                                          padding: EdgeInsets.all(12.r),
+                                          decoration: BoxDecoration(
+                                            color:
+                                                _selectedWatermarkPath != null
+                                                    ? AppColors.primaryPink
+                                                        .withOpacity(0.1)
+                                                    : Colors.grey.shade100,
+                                            borderRadius: BorderRadius.circular(
+                                              12.r,
+                                            ),
+                                          ),
+                                          child: Icon(
+                                            _selectedWatermarkPath != null
+                                                ? Icons.check_circle_rounded
+                                                : Icons
+                                                    .add_photo_alternate_rounded,
+                                            color:
+                                                _selectedWatermarkPath != null
+                                                    ? AppColors.primaryPink
+                                                    : Colors.grey.shade600,
+                                            size: 28.sp,
+                                          ),
+                                        ),
+                                        SizedBox(width: 16.w),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                _selectedWatermarkPath == null
+                                                    ? 'Select Watermark Image'
+                                                    : 'Watermark Selected',
+                                                style: TextStyle(
+                                                  fontSize: 16.sp,
+                                                  fontWeight: FontWeight.w600,
+                                                  color:
+                                                      _selectedWatermarkPath !=
+                                                              null
+                                                          ? AppColors
+                                                              .primaryPink
+                                                          : AppColors
+                                                              .textPrimary,
+                                                ),
+                                              ),
+                                              SizedBox(height: 4.h),
+                                              Text(
+                                                _selectedWatermarkPath == null
+                                                    ? 'JPG, PNG formats supported'
+                                                    : 'Ready to apply watermark',
+                                                style: TextStyle(
+                                                  fontSize: 12.sp,
+                                                  color: Colors.grey.shade600,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                        if (_selectedWatermarkPath != null)
+                                          Container(
+                                            padding: EdgeInsets.all(8.r),
+                                            decoration: BoxDecoration(
+                                              color: AppColors.primaryPink
+                                                  .withOpacity(0.1),
+                                              borderRadius:
+                                                  BorderRadius.circular(8.r),
+                                            ),
+                                            child: Icon(
+                                              Icons.arrow_forward_ios_rounded,
+                                              size: 14.sp,
+                                              color: AppColors.primaryPink,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(height: 32.h),
+
+                            // Opacity Section with Progress Bar
+                            Container(
+                              padding: EdgeInsets.all(24.r),
+                              decoration: BoxDecoration(
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [Colors.grey.shade50, Colors.white],
+                                ),
+                                borderRadius: BorderRadius.circular(20.r),
+                                border: Border.all(
+                                  color: Colors.grey.shade200,
+                                  width: 1.w,
+                                ),
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Row(
+                                        children: [
+                                          Icon(
+                                            Icons.opacity_rounded,
+                                            color: AppColors.primaryPink,
+                                            size: 20.sp,
+                                          ),
+                                          SizedBox(width: 8.w),
+                                          Text(
+                                            'Opacity',
+                                            style: TextStyle(
+                                              fontSize: 16.sp,
+                                              fontWeight: FontWeight.w600,
+                                              color: AppColors.textPrimary,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                      Container(
+                                        padding: EdgeInsets.symmetric(
+                                          horizontal: 16.w,
+                                          vertical: 8.h,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: [
+                                              AppColors.primaryPink,
+                                              AppColors.primaryPink.withOpacity(
+                                                0.8,
+                                              ),
+                                            ],
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            20.r,
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              color: AppColors.primaryPink
+                                                  .withOpacity(0.3),
+                                              blurRadius: 8.r,
+                                              offset: Offset(0, 4.h),
+                                            ),
+                                          ],
+                                        ),
+                                        child: Text(
+                                          '${(_watermarkOpacity * 100).round()}%',
+                                          style: TextStyle(
+                                            fontSize: 14.sp,
+                                            fontWeight: FontWeight.bold,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 20.h),
+
+                                  // Custom Progress Bar with Percent Indicator
+                                  LinearPercentIndicator(
+                                    width: 170.sp,
+                                    // MediaQuery.of(context).size.width -
+                                    // 120.w,
+                                    animation: true,
+                                    animationDuration: 300,
+                                    lineHeight: 12.h,
+                                    percent: _watermarkOpacity,
+                                    center: Container(),
+                                    linearStrokeCap: LinearStrokeCap.roundAll,
+                                    progressColor: AppColors.primaryPink,
+                                    backgroundColor: Colors.grey.shade200,
+                                    barRadius: Radius.circular(6.r),
+                                    leading: Container(
+                                      padding: EdgeInsets.all(6.r),
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(
+                                          6.r,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '',
+                                        style: TextStyle(
+                                          fontSize: 1.sp,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                    trailing: Container(
+                                      padding: EdgeInsets.all(6.r),
+                                      decoration: BoxDecoration(
+                                        color: AppColors.primaryPink
+                                            .withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(
+                                          6.r,
+                                        ),
+                                      ),
+                                      child: Text(
+                                        '100%',
+                                        style: TextStyle(
+                                          fontSize: 10.sp,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppColors.primaryPink,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+
+                                  SizedBox(height: 16.h),
+
+                                  // Custom Slider
+                                  SliderTheme(
+                                    data: SliderTheme.of(context).copyWith(
+                                      trackHeight: 4.h,
+                                      thumbShape: CustomSliderThumbShape(
+                                        enabledThumbRadius: 12.r,
+                                        elevation: 4,
+                                      ),
+                                      overlayShape: RoundSliderOverlayShape(
+                                        overlayRadius: 20.r,
+                                      ),
+                                      activeTrackColor: AppColors.primaryPink,
+                                      //   inactiveTrackColor: Colors.grey.shade300,
+                                      thumbColor: Colors.white,
+                                      overlayColor: AppColors.primaryPink
+                                          .withOpacity(0.2),
+                                    ),
+                                    child: Slider(
+                                      value: _watermarkOpacity,
+                                      min: 0.1,
+                                      max: 1.0,
+                                      divisions: 9,
+                                      onChanged:
+                                          _isProcessing
+                                              ? null
+                                              : (value) {
+                                                setState(() {
+                                                  _watermarkOpacity = value;
+                                                });
+                                              },
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            SizedBox(height: 24.h),
+
+                            // Position Selection
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Icon(
+                                      Icons.photo_size_select_actual_rounded,
+                                      color: AppColors.primaryPink,
+                                      size: 20.sp,
+                                    ),
+                                    SizedBox(width: 8.w),
+                                    Text(
+                                      'Position',
+                                      style: TextStyle(
+                                        fontSize: 16.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: AppColors.textPrimary,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                SizedBox(height: 16.h),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(16.r),
+                                    border: Border.all(
+                                      color: Colors.grey.shade300,
+                                      width: 1.w,
+                                    ),
+                                    gradient: LinearGradient(
+                                      colors: [
+                                        Colors.white,
+                                        Colors.grey.shade50,
+                                      ],
+                                    ),
+                                  ),
+                                  child: DropdownButtonFormField<
+                                    WatermarkPosition
+                                  >(
+                                    value: _watermarkPosition,
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.symmetric(
+                                        horizontal: 20.w,
+                                        vertical: 16.h,
+                                      ),
+                                      suffixIcon: Icon(
+                                        Icons.keyboard_arrow_down_rounded,
+                                        color: AppColors.primaryPink,
+                                        size: 24.sp,
+                                      ),
+                                    ),
+                                    dropdownColor: Colors.white,
+                                    style: TextStyle(
+                                      fontSize: 14.sp,
+                                      color: AppColors.textPrimary,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                    items: const [
+                                      DropdownMenuItem(
+                                        value: WatermarkPosition.topLeft,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.north_west, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Top Left'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: WatermarkPosition.topRight,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.north_east, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Top Right'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: WatermarkPosition.bottomLeft,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.south_west, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Bottom Left'),
+                                          ],
+                                        ),
+                                      ),
+                                      DropdownMenuItem(
+                                        value: WatermarkPosition.bottomRight,
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.south_east, size: 16),
+                                            SizedBox(width: 8),
+                                            Text('Bottom Right'),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                    onChanged:
+                                        _isProcessing
+                                            ? null
+                                            : (value) {
+                                              setState(() {
+                                                _watermarkPosition = value!;
+                                              });
+                                            },
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        )
+                        : SizedBox.shrink(),
               ),
             ],
           ),
-          if (_useWatermark) ...[
-            SizedBox(height: 20.h),
-            // Watermark file selection
-            GestureDetector(
-              onTap: _isProcessing ? null : _pickWatermark,
-              child: Container(
-                padding: EdgeInsets.all(16.r),
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color:
-                        _selectedWatermarkPath != null
-                            ? AppColors.primaryPink
-                            : AppColors.borderLight,
-                    width: 2,
-                  ),
-                  borderRadius: BorderRadius.circular(12.r),
-                  color:
-                      _selectedWatermarkPath != null
-                          ? AppColors.primaryPink.withOpacity(0.05)
-                          : null,
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      _selectedWatermarkPath != null
-                          ? Icons.check_circle
-                          : Icons.add_photo_alternate,
-                      color:
-                          _selectedWatermarkPath != null
-                              ? AppColors.primaryPink
-                              : AppColors.textSecondary,
-                      size: 24.sp,
-                    ),
-                    SizedBox(width: 12.w),
-                    Expanded(
-                      child: Text(
-                        _selectedWatermarkPath == null
-                            ? 'Select Watermark (JPG/PNG)'
-                            : 'Watermark Selected',
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          color:
-                              _selectedWatermarkPath != null
-                                  ? AppColors.primaryPink
-                                  : AppColors.textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            SizedBox(height: 20.h),
-            // Opacity slider
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Opacity',
-                      style: TextStyle(
-                        fontSize: 16.sp,
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textPrimary,
-                      ),
-                    ),
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal: 12.w,
-                        vertical: 4.h,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: AppColors.accentGradient,
-                        borderRadius: BorderRadius.circular(12.r),
-                      ),
-                      child: Text(
-                        '${(_watermarkOpacity * 100).round()}%',
-                        style: TextStyle(
-                          fontSize: 14.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 8.h),
-                SliderTheme(
-                  data: SliderTheme.of(context).copyWith(
-                    trackHeight: 6.h,
-                    thumbShape: RoundSliderThumbShape(enabledThumbRadius: 12.r),
-                  ),
-                  child: Slider(
-                    value: _watermarkOpacity,
-                    min: 0.1,
-                    max: 1.0,
-                    divisions: 9,
-                    activeColor: AppColors.primaryPink,
-                    inactiveColor: AppColors.borderLight,
-                    onChanged:
-                        _isProcessing
-                            ? null
-                            : (value) {
-                              setState(() {
-                                _watermarkOpacity = value;
-                              });
-                            },
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 16.h),
-            // Position dropdown
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Position',
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12.r),
-                    border: Border.all(color: AppColors.borderLight),
-                  ),
-                  child: DropdownButtonFormField<WatermarkPosition>(
-                    value: _watermarkPosition,
-                    decoration: InputDecoration(
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.symmetric(
-                        horizontal: 16.w,
-                        vertical: 12.h,
-                      ),
-                    ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: WatermarkPosition.topLeft,
-                        child: Text('Top Left'),
-                      ),
-                      DropdownMenuItem(
-                        value: WatermarkPosition.topRight,
-                        child: Text('Top Right'),
-                      ),
-                      DropdownMenuItem(
-                        value: WatermarkPosition.bottomLeft,
-                        child: Text('Bottom Left'),
-                      ),
-                      DropdownMenuItem(
-                        value: WatermarkPosition.bottomRight,
-                        child: Text('Bottom Right'),
-                      ),
-                    ],
-                    onChanged:
-                        _isProcessing
-                            ? null
-                            : (value) {
-                              setState(() {
-                                _watermarkPosition = value!;
-                              });
-                            },
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildSplitButton() {
+ Widget _buildSplitButton() {
     return Container(
       height: 60.h,
       decoration: BoxDecoration(
@@ -1146,7 +1363,11 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                     ),
                   )
                 else
-                  Icon(Icons.content_cut, color: Colors.white, size: 24.sp),
+                  Icon(
+                    Icons.content_cut_rounded,
+                    color: Colors.white,
+                    size: 24.sp,
+                  ),
                 SizedBox(width: 12.w),
                 Text(
                   _isProcessing ? 'Processing...' : 'Split Video',
@@ -1164,203 +1385,30 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
-  Widget _buildNavigationSection() {
+ Widget _buildNavigationSection() {
     return Container(
       padding: EdgeInsets.all(16.r),
-      child: Row(
-        children: [
-          Expanded(
-            child: _buildSplitButton(), // Your existing split button
-          ),
-          SizedBox(width: 12.w),
-          Container(
-            height: 60.h,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-              ),
-              borderRadius: BorderRadius.circular(30.r),
-              boxShadow: [
-                BoxShadow(
-                  color: Color(0xFF667EEA).withOpacity(0.3),
-                  blurRadius: 20.r,
-                  offset: Offset(0, 8.h),
-                ),
-              ],
-            ),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => VideoDownloadScreen(),
-                    ),
-                  );
-                },
-                borderRadius: BorderRadius.circular(30.r),
-                child: Container(
-                  padding: EdgeInsets.symmetric(horizontal: 20.w),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.download, color: Colors.white, size: 24.sp),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Downloads',
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
+      child: _buildSplitButton(), // Only split button now
     );
   }
 
-  // // Add this method to show success dialog after processing
-  // void _showProcessingComplete() {
-  //     showDialog(
-  //       context: context,
-  //       barrierDismissible: false,
-  //       builder:
-  //           (context) => AlertDialog(
-  //             shape: RoundedRectangleBorder(
-  //               borderRadius: BorderRadius.circular(16.r),
-  //             ),
-  //             title: Row(
-  //               children: [
-  //                 Container(
-  //                   padding: EdgeInsets.all(8.r),
-  //                   decoration: BoxDecoration(
-  //                     color: Colors.green.shade100,
-  //                     shape: BoxShape.circle,
-  //                   ),
-  //                   child: Icon(
-  //                     Icons.check_circle,
-  //                     color: Colors.green,
-  //                     size: 24.sp,
-  //                   ),
-  //                 ),
-  //                 SizedBox(width: 12.w),
-  //                 Text(
-  //                   'Processing Complete!',
-  //                   style: TextStyle(
-  //                     fontSize: 18.sp,
-  //                     fontWeight: FontWeight.bold,
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //             content: Column(
-  //               mainAxisSize: MainAxisSize.min,
-  //               crossAxisAlignment: CrossAxisAlignment.start,
-  //               children: [
-  //                 Text(
-  //                   'Your video has been successfully split into clips.',
-  //                   style: TextStyle(
-  //                     fontSize: 14.sp,
-  //                     color: Colors.grey.shade700,
-  //                   ),
-  //                 ),
-  //                 SizedBox(height: 12.h),
-  //                 Container(
-  //                   padding: EdgeInsets.all(12.r),
-  //                   decoration: BoxDecoration(
-  //                     color: Colors.blue.shade50,
-  //                     borderRadius: BorderRadius.circular(8.r),
-  //                     border: Border.all(color: Colors.blue.shade200),
-  //                   ),
-  //                   child: Row(
-  //                     children: [
-  //                       Icon(
-  //                         Icons.info_outline,
-  //                         color: Colors.blue.shade600,
-  //                         size: 20.sp,
-  //                       ),
-  //                       SizedBox(width: 8.w),
-  //                       Expanded(
-  //                         child: Text(
-  //                           'Videos are ready to download in the Downloads section.',
-  //                           style: TextStyle(
-  //                             fontSize: 13.sp,
-  //                             color: Colors.blue.shade700,
-  //                           ),
-  //                         ),
-  //                       ),
-  //                     ],
-  //                   ),
-  //                 ),
-  //               ],
-  //             ),
-  //             actions: [
-  //               TextButton(
-  //                 onPressed: () => Navigator.pop(context),
-  //                 child: Text(
-  //                   'OK',
-  //                   style: TextStyle(
-  //                     color: Colors.grey.shade600,
-  //                     fontWeight: FontWeight.w600,
-  //                   ),
-  //                 ),
-  //               ),
-  //               ElevatedButton(
-  //                 onPressed: () {
-  //                   Navigator.pop(context);
-  //                   Navigator.push(
-  //                     context,
-  //                     MaterialPageRoute(
-  //                       builder: (context) => VideoDownloadScreen(),
-  //                     ),
-  //                   );
-  //                 },
-  //                 style: ElevatedButton.styleFrom(
-  //                   backgroundColor: Colors.blue,
-  //                   foregroundColor: Colors.white,
-  //                   shape: RoundedRectangleBorder(
-  //                     borderRadius: BorderRadius.circular(8.r),
-  //                   ),
-  //                   padding: EdgeInsets.symmetric(
-  //                     horizontal: 16.w,
-  //                     vertical: 8.h,
-  //                   ),
-  //                 ),
-  //                 child: Row(
-  //                   mainAxisSize: MainAxisSize.min,
-  //                   children: [
-  //                     Icon(Icons.download, size: 18.sp),
-  //                     SizedBox(width: 6.w),
-  //                     Text(
-  //                       'View Downloads',
-  //                       style: TextStyle(fontWeight: FontWeight.w600),
-  //                     ),
-  //                   ],
-  //                 ),
-  //               ),
-  //             ],
-  //           ),
-  //     );
-  //   }
-
-  Widget _buildProgressSection() {
+  // Enhanced Progress Section
+ Widget _buildProgressSection() {
     return Container(
       padding: EdgeInsets.all(24.r),
+      margin: EdgeInsets.symmetric(horizontal: 4.r),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(
+          color: AppColors.primaryPink.withOpacity(0.1),
+          width: 1.5,
+        ),
         boxShadow: [
           BoxShadow(
             color: AppColors.shadowLight,
-            blurRadius: 20.r,
-            offset: Offset(0, 8.h),
+            blurRadius: 25.r,
+            offset: Offset(0, 10.h),
           ),
         ],
       ),
@@ -1369,22 +1417,46 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
           Row(
             children: [
               Container(
-                padding: EdgeInsets.all(8.r),
+                padding: EdgeInsets.all(12.r),
                 decoration: BoxDecoration(
                   gradient: AppColors.accentGradient,
-                  borderRadius: BorderRadius.circular(8.r),
+                  borderRadius: BorderRadius.circular(12.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryPink.withOpacity(0.2),
+                      blurRadius: 8.r,
+                      offset: Offset(0, 4.h),
+                    ),
+                  ],
                 ),
-                child: Icon(Icons.schedule, color: Colors.white, size: 20.sp),
+                child: Icon(
+                  Icons.auto_awesome,
+                  color: Colors.white,
+                  size: 20.sp,
+                ),
               ),
-              SizedBox(width: 12.w),
+              SizedBox(width: 16.w),
               Expanded(
-                child: Text(
-                  'Processing Progress',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textPrimary,
-                  ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Processing Video',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 4.h),
+                    Text(
+                      'Creating amazing clips for you...',
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
               Container(
@@ -1392,6 +1464,13 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                 decoration: BoxDecoration(
                   gradient: AppColors.secondaryGradient,
                   borderRadius: BorderRadius.circular(20.r),
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.primaryPink.withOpacity(0.2),
+                      blurRadius: 8.r,
+                      offset: Offset(0, 4.h),
+                    ),
+                  ],
                 ),
                 child: Text(
                   '${(_progress * 100).toInt()}%',
@@ -1404,43 +1483,118 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
               ),
             ],
           ),
-          SizedBox(height: 20.h),
+          SizedBox(height: 24.h),
+
+          // Progress Info Row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Clip $_currentClip of $_totalClips',
-                style: TextStyle(
-                  fontSize: 16.sp,
-                  color: AppColors.textSecondary,
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                decoration: BoxDecoration(
+                  color: AppColors.primaryPink.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Text(
+                  'Clip $_currentClip of $_totalClips',
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: AppColors.primaryPink,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
               ),
-              Text(
-                'Processing...',
-                style: TextStyle(
-                  fontSize: 14.sp,
-                  color: AppColors.primaryPink,
-                  fontWeight: FontWeight.w500,
-                ),
+              // Replaced circular progress with linear progress
+              Row(
+                children: [
+                  Container(
+                    width: 60.w,
+                    height: 4.h,
+                    decoration: BoxDecoration(
+                      color: AppColors.borderLight,
+                      borderRadius: BorderRadius.circular(2.r),
+                    ),
+                    child: Stack(
+                      children: [
+                        FractionallySizedBox(
+                          alignment: Alignment.centerLeft,
+                          widthFactor: _progress,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              gradient: AppColors.primaryGradient,
+                              borderRadius: BorderRadius.circular(2.r),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(width: 8.w),
+                  Text(
+                    'Processing...',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.textSecondary,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-          SizedBox(height: 12.h),
+          SizedBox(height: 16.h),
+
+          // Enhanced Main Progress Bar (Left to Right)
           Container(
-            height: 8.h,
+            height: 12.h, // Made slightly taller for better visibility
             decoration: BoxDecoration(
               color: AppColors.borderLight,
-              borderRadius: BorderRadius.circular(4.r),
+              borderRadius: BorderRadius.circular(6.r),
             ),
-            child: FractionallySizedBox(
-              alignment: Alignment.centerLeft,
-              widthFactor: _progress,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: AppColors.primaryGradient,
-                  borderRadius: BorderRadius.circular(4.r),
+            child: Stack(
+              children: [
+                // Background track
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.borderLight,
+                    borderRadius: BorderRadius.circular(6.r),
+                  ),
                 ),
-              ),
+                // Progress fill (left to right)
+                FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: _progress,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: AppColors.primaryGradient,
+                      borderRadius: BorderRadius.circular(6.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryPink.withOpacity(0.4),
+                          blurRadius: 6.r,
+                          offset: Offset(0, 2.h),
+                        ),
+                      ],
+                    ),
+                    // Optional: Add animated shimmer effect
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(6.r),
+                        gradient: LinearGradient(
+                          colors: [
+                            Colors.white.withOpacity(0.0),
+                            Colors.white.withOpacity(0.1),
+                            Colors.white.withOpacity(0.0),
+                          ],
+                          stops: [0.0, 0.5, 1.0],
+                          begin: Alignment.centerLeft,
+                          end: Alignment.centerRight,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1454,6 +1608,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
     return Container(
       padding: EdgeInsets.all(20.r),
+      margin: EdgeInsets.symmetric(horizontal: 4.r),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
@@ -1469,15 +1624,15 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
         boxShadow: [
           BoxShadow(
             color: AppColors.shadowLight,
-            blurRadius: 15.r,
-            offset: Offset(0, 6.h),
+            blurRadius: 20.r,
+            offset: Offset(0, 8.h),
           ),
         ],
       ),
       child: Row(
         children: [
           Container(
-            padding: EdgeInsets.all(8.r),
+            padding: EdgeInsets.all(12.r),
             decoration: BoxDecoration(
               color:
                   isError
@@ -1485,14 +1640,14 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                       : isSuccess
                       ? AppColors.successColor.withOpacity(0.1)
                       : AppColors.infoColor.withOpacity(0.1),
-              borderRadius: BorderRadius.circular(8.r),
+              borderRadius: BorderRadius.circular(12.r),
             ),
             child: Icon(
               isError
-                  ? Icons.error_outline
+                  ? Icons.error_outline_rounded
                   : isSuccess
-                  ? Icons.check_circle_outline
-                  : Icons.info_outline,
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.info_outline_rounded,
               color:
                   isError
                       ? AppColors.errorColor
@@ -1509,10 +1664,10 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
               children: [
                 Text(
                   isError
-                      ? 'Error'
+                      ? 'Processing Failed'
                       : isSuccess
-                      ? 'Success'
-                      : 'Status',
+                      ? 'Success!'
+                      : 'Status Update',
                   style: TextStyle(
                     fontSize: 16.sp,
                     fontWeight: FontWeight.bold,
@@ -1530,6 +1685,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                   style: TextStyle(
                     fontSize: 14.sp,
                     color: AppColors.textSecondary,
+                    height: 1.3,
                   ),
                 ),
               ],
@@ -1537,15 +1693,205 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
           ),
           if (isSuccess)
             Container(
-              padding: EdgeInsets.all(8.r),
+              padding: EdgeInsets.all(10.r),
               decoration: BoxDecoration(
                 gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(8.r),
+                borderRadius: BorderRadius.circular(12.r),
+                boxShadow: [
+                  BoxShadow(
+                    color: AppColors.primaryPink.withOpacity(0.3),
+                    blurRadius: 8.r,
+                    offset: Offset(0, 4.h),
+                  ),
+                ],
               ),
-              child: Icon(Icons.folder_open, color: Colors.white, size: 20.sp),
+              child: Icon(
+                Icons.celebration_rounded,
+                color: Colors.white,
+                size: 20.sp,
+              ),
             ),
         ],
       ),
+    );
+  }
+
+  // Success Dialog Method
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext context) {
+        return Dialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24.r),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: EdgeInsets.all(24.r),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24.r),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 30.r,
+                  offset: Offset(0, 10.h),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Success Animation Container
+                Container(
+                  width: 80.w,
+                  height: 80.w,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF4CAF50), Color(0xFF81C784)],
+                    ),
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: Color(0xFF4CAF50).withOpacity(0.3),
+                        blurRadius: 20.r,
+                        offset: Offset(0, 8.h),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.white,
+                    size: 40.sp,
+                  ),
+                ),
+                SizedBox(height: 24.h),
+
+                // Success Title
+                Text(
+                  'Video Split Successfully!',
+                  style: TextStyle(
+                    fontSize: 22.sp,
+                    fontWeight: FontWeight.bold,
+                    color: AppColors.textPrimary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 12.h),
+
+                // Success Message
+                Text(
+                  'Your video has been split into $_totalClips clips and saved successfully.',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    color: AppColors.textSecondary,
+                    height: 1.4,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 32.h),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    // Download Button
+                    Expanded(
+                      child: Container(
+                        height: 50.h,
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+                          ),
+                          borderRadius: BorderRadius.circular(25.r),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Color(0xFF667EEA).withOpacity(0.3),
+                              blurRadius: 15.r,
+                              offset: Offset(0, 6.h),
+                            ),
+                          ],
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop(); // Close dialog
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => VideoDownloadScreen(),
+                                ),
+                              );
+                            },
+                            borderRadius: BorderRadius.circular(25.r),
+                            child: Center(
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.download_rounded,
+                                    color: Colors.white,
+                                    size: 20.sp,
+                                  ),
+                                  SizedBox(width: 8.w),
+                                  Text(
+                                    'Downloads',
+                                    style: TextStyle(
+                                      fontSize: 16.sp,
+                                      fontWeight: FontWeight.w600,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+
+                    // OK Button
+                    Expanded(
+                      child: Container(
+                        height: 50.h,
+                        decoration: BoxDecoration(
+                          border: Border.all(
+                            color: AppColors.primaryPink.withOpacity(0.3),
+                            width: 1.5,
+                          ),
+                          borderRadius: BorderRadius.circular(25.r),
+                        ),
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              Navigator.of(context).pop(); // Close dialog
+                            },
+                            borderRadius: BorderRadius.circular(25.r),
+                            child: Center(
+                              child: Text(
+                                'OK',
+                                style: TextStyle(
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppColors.primaryPink,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -1558,3 +1904,164 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     super.dispose();
   }
 }
+
+
+
+
+
+
+
+
+// text overlaping function    
+
+
+  // Widget _buildTextOverlaySection() {
+  //   return Container(
+  //     padding: EdgeInsets.all(24.r),
+  //     decoration: BoxDecoration(
+  //       color: Colors.white,
+  //       borderRadius: BorderRadius.circular(20.r),
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: AppColors.shadowLight,
+  //           blurRadius: 20.r,
+  //           offset: Offset(0, 8.h),
+  //         ),
+  //       ],
+  //     ),
+  //     child: Column(
+  //       crossAxisAlignment: CrossAxisAlignment.start,
+  //       children: [
+  //         Row(
+  //           children: [
+  //             Container(
+  //               padding: EdgeInsets.all(8.r),
+  //               decoration: BoxDecoration(
+  //                 gradient: AppColors.accentGradient,
+  //                 borderRadius: BorderRadius.circular(8.r),
+  //               ),
+  //               child: Icon(
+  //                 Icons.text_fields,
+  //                 color: Colors.white,
+  //                 size: 20.sp,
+  //               ),
+  //             ),
+  //             SizedBox(width: 12.w),
+  //             Expanded(
+  //               child: Text(
+  //                 'Text Overlay',
+  //                 style: TextStyle(
+  //                   fontSize: 18.sp,
+  //                   fontWeight: FontWeight.bold,
+  //                   color: AppColors.textPrimary,
+  //                 ),
+  //               ),
+  //             ),
+  //             Switch(
+  //               value: _useTextOverlay,
+  //               onChanged:
+  //                   _isProcessing
+  //                       ? null
+  //                       : (value) {
+  //                         setState(() {
+  //                           _useTextOverlay = value;
+  //                         });
+  //                       },
+  //               activeColor: AppColors.primaryPink,
+  //             ),
+  //           ],
+  //         ),
+  //         if (_useTextOverlay) ...[
+  //           SizedBox(height: 20.h),
+  //           // Text prefix input
+  //           TextField(
+  //             controller: _textController,
+  //             enabled: !_isProcessing,
+  //             decoration: InputDecoration(
+  //               labelText: 'Text Prefix (e.g., Part, Clip)',
+  //               hintText: 'Part',
+  //               border: OutlineInputBorder(
+  //                 borderRadius: BorderRadius.circular(12.r),
+  //               ),
+  //               contentPadding: EdgeInsets.all(16.r),
+  //             ),
+  //             onChanged: (value) {
+  //               setState(() {
+  //                 _textPrefix = value.isEmpty ? 'Part' : value;
+  //               });
+  //             },
+  //           ),
+  //           SizedBox(height: 16.h),
+  //           // Text position dropdown
+  //           DropdownButtonFormField<TextPosition>(
+  //             value: _textPosition,
+  //             decoration: InputDecoration(
+  //               labelText: 'Text Position',
+  //               border: OutlineInputBorder(
+  //                 borderRadius: BorderRadius.circular(12.r),
+  //               ),
+  //               contentPadding: EdgeInsets.all(16.r),
+  //             ),
+  //             items: [
+  //               DropdownMenuItem(
+  //                 value: TextPosition.topCenter,
+  //                 child: Text('Top Center'),
+  //               ),
+  //               DropdownMenuItem(
+  //                 value: TextPosition.topLeft,
+  //                 child: Text('Top Left'),
+  //               ),
+  //               DropdownMenuItem(
+  //                 value: TextPosition.topRight,
+  //                 child: Text('Top Right'),
+  //               ),
+  //               DropdownMenuItem(
+  //                 value: TextPosition.bottomCenter,
+  //                 child: Text('Bottom Center'),
+  //               ),
+  //               DropdownMenuItem(
+  //                 value: TextPosition.bottomLeft,
+  //                 child: Text('Bottom Left'),
+  //               ),
+  //               DropdownMenuItem(
+  //                 value: TextPosition.bottomRight,
+  //                 child: Text('Bottom Right'),
+  //               ),
+  //             ],
+  //             onChanged:
+  //                 _isProcessing
+  //                     ? null
+  //                     : (value) {
+  //                       setState(() {
+  //                         _textPosition = value!;
+  //                       });
+  //                     },
+  //           ),
+  //           SizedBox(height: 16.h),
+  //           // Font size slider
+  //           Row(
+  //             children: [
+  //               Text('Font Size: ${_fontSize.round()}px'),
+  //               Expanded(
+  //                 child: Slider(
+  //                   value: _fontSize,
+  //                   min: 16.0,
+  //                   max: 48.0,
+  //                   divisions: 16,
+  //                   onChanged:
+  //                       _isProcessing
+  //                           ? null
+  //                           : (value) {
+  //                             setState(() {
+  //                               _fontSize = value;
+  //                             });
+  //                           },
+  //                 ),
+  //               ),
+  //             ],
+  //           ),
+  //         ],
+  //       ],
+  //     ),
+  //   );
+  // }

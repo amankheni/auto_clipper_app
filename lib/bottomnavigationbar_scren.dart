@@ -1,7 +1,6 @@
 // ignore_for_file: library_private_types_in_public_api, deprecated_member_use
 
 import 'package:auto_clipper_app/Screens/Split_screen.dart';
-import 'package:auto_clipper_app/Screens/Video_Editer_sreen.dart';
 import 'package:auto_clipper_app/Screens/video_download_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -28,10 +27,9 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
     super.initState();
     _pageController = PageController(initialPage: 0);
 
-    // Initialize screens
+    // Initialize screens (VideoEditorScreen removed)
     _screens = [
       const VideoSplitterScreen(),
-      const VideoEditorScreen(),
       VideoDownloadScreen(),
     ];
   }
@@ -47,7 +45,7 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
       // Use page controller for smooth transitions
       _pageController.animateToPage(
         index,
-        duration: const Duration(milliseconds: 250), // Reduced duration
+        duration: const Duration(milliseconds: 250),
         curve: Curves.easeInOut,
       );
     }
@@ -69,15 +67,10 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
       body: PageView(
         controller: _pageController,
         onPageChanged: _onPageChanged,
-        physics: const ClampingScrollPhysics(), // Better performance
-        children:
-            _screens
-                .map(
-                  (screen) =>
-                  // Wrap each screen to maintain state
-                  _KeepAliveWrapper(child: screen),
-                )
-                .toList(),
+        physics: const ClampingScrollPhysics(),
+        children: _screens
+            .map((screen) => _KeepAliveWrapper(child: screen))
+            .toList(),
       ),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
@@ -99,29 +92,20 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
           onTap: _onTabTapped,
-          backgroundColor: Colors.transparent, // Use container color
+          backgroundColor: Colors.transparent,
           selectedItemColor: const Color(0xFFE91E63),
           unselectedItemColor: Colors.grey[600],
           selectedFontSize: 14,
           unselectedFontSize: 12,
           type: BottomNavigationBarType.fixed,
-          elevation: 0, // Remove default elevation
+          elevation: 0,
           selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
           unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w400),
           items: const [
             BottomNavigationBarItem(
               icon: Icon(Icons.content_cut),
-              activeIcon: Icon(
-                Icons.content_cut,
-                size: 28,
-              ), // Larger active icon
+              activeIcon: Icon(Icons.content_cut, size: 28),
               label: 'Split',
-            ),
-
-            BottomNavigationBarItem(
-              icon: Icon(Icons.video_settings),
-              activeIcon: Icon(Icons.video_settings, size: 28),
-              label: 'Edit',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.download_done_outlined),

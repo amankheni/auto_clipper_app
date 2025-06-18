@@ -1,35 +1,59 @@
-// ignore_for_file: deprecated_member_use
+// ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_brace_in_string_interps, avoid_print, library_private_types_in_public_api, unnecessary_null_comparison
 
-import 'dart:io';
+import 'dart:ui';
 
+import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
-import 'package:device_info_plus/device_info_plus.dart';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
-import 'package:gallery_saver_plus/gallery_saver.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:share_plus/share_plus.dart';
 
 class VideoDownloadScreen extends StatefulWidget {
+  const VideoDownloadScreen({super.key});
+
   @override
   _VideoDownloadScreenState createState() => _VideoDownloadScreenState();
 }
 
-class _VideoDownloadScreenState extends State<VideoDownloadScreen> {
+class _VideoDownloadScreenState extends State<VideoDownloadScreen>
+    with TickerProviderStateMixin {
+  final VideoDownloadController _controller = VideoDownloadController();
   List<VideoSession> _sessions = [];
   bool _isLoading = false;
   String _statusMessage = '';
-  Set<String> _downloadingVideos = {};
   VideoSession? _selectedSession;
-  bool _isBulkDownloading = false;
-  int _downloadProgress = 0;
-  int _totalDownloads = 0;
+  late AnimationController _animationController;
+  late Animation<double> _fadeAnimation;
+  late Animation<Offset> _slideAnimation;
 
   @override
   void initState() {
     super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+
+    _fadeAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeInOut),
+    );
+
+    _slideAnimation = Tween<Offset>(
+      begin: const Offset(0, 0.3),
+      end: Offset.zero,
+    ).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
+    );
+
     _loadVideoSessions();
+    _animationController.forward();
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadVideoSessions() async {
@@ -38,75 +62,7 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen> {
     });
 
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final videosDir = Directory('${appDir.path}/processed_videos');
-
-      if (!await videosDir.exists()) {
-        await videosDir.create(recursive: true);
-        setState(() {
-          _sessions = [];
-          _isLoading = false;
-        });
-        return;
-      }
-
-      final sessionDirs =
-          await videosDir
-              .list()
-              .where(
-                (entity) =>
-                    entity is Directory && entity.path.contains('session_'),
-              )
-              .cast<Directory>()
-              .toList();
-
-      List<VideoSession> sessions = [];
-
-      for (Directory sessionDir in sessionDirs) {
-        final sessionId = sessionDir.path.split('/').last;
-        final timestamp =
-            int.tryParse(sessionId.replaceAll('session_', '')) ?? 0;
-        final createdAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
-
-        final videoFiles =
-            await sessionDir
-                .list()
-                .where(
-                  (entity) =>
-                      entity is File &&
-                      entity.path.toLowerCase().endsWith('.mp4'),
-                )
-                .cast<File>()
-                .toList();
-
-        List<ProcessedVideo> videos = [];
-        for (File file in videoFiles) {
-          final stat = await file.stat();
-          videos.add(
-            ProcessedVideo(
-              path: file.path,
-              name: file.path.split('/').last,
-              createdAt: stat.modified,
-              fileSizeInBytes: stat.size,
-              durationInSeconds: await _getVideoDuration(file.path),
-            ),
-          );
-        }
-
-        if (videos.isNotEmpty) {
-          sessions.add(
-            VideoSession(
-              sessionId: sessionId,
-              sessionPath: sessionDir.path,
-              createdAt: createdAt,
-              videos: videos,
-            ),
-          );
-        }
-      }
-
-      sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-
+      final sessions = await _controller.loadVideoSessions();
       setState(() {
         _sessions = sessions;
       });
@@ -121,215 +77,67 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen> {
     }
   }
 
-  Future<int> _getVideoDuration(String videoPath) async {
-    try {
-      final file = File(videoPath);
-      if (await file.exists()) {
-        final sizeInMB = await file.length() / (1024 * 1024);
-        return (sizeInMB * 10).round();
-      }
-    } catch (e) {
-      print('Error getting duration: $e');
-    }
-    return 0;
-  }
-
- Future<void> _downloadToGallery(String videoPath) async {
-    if (_downloadingVideos.contains(videoPath)) return;
-
+  Future<void> _downloadToGallery(String videoPath) async {
     setState(() {
-      _downloadingVideos.add(videoPath);
       _statusMessage = 'Requesting permissions...';
     });
 
-    try {
-      // Request permissions first
-      bool permissionGranted = await requestPermissions();
+    final message = await _controller.downloadToGallery(videoPath, context);
 
-      if (!permissionGranted) {
-        // Try to open app settings if permission denied
-        setState(() {
-          _statusMessage = 'Please grant storage permission in app settings';
-        });
+    setState(() {
+      _statusMessage = message;
+    });
 
-        // Show dialog to open settings
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Permission Required'),
-              content: Text(
-                'Storage permission is required to download videos. Please grant permission in app settings.',
-              ),
-              actions: [
-                TextButton(
-                  child: Text('Cancel'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: Text('Open Settings'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    openAppSettings();
-                  },
-                ),
-              ],
-            );
-          },
-        );
-        return;
-      }
-
-      setState(() {
-        _statusMessage = 'Downloading video...';
-      });
-
-      // Method 1: Try GallerySaver first
-      bool success = false;
-      try {
-        final result = await GallerySaver.saveVideo(
-          videoPath,
-          albumName: "Auto Clipper",
-        );
-        success = result == true;
-      } catch (e) {
-        print('GallerySaver failed: $e');
-        success = false;
-      }
-
-      // Method 2: If GallerySaver fails, try manual file copy
-      if (!success) {
-        try {
-          final downloadDir = await getDownloadDirectory();
-          if (downloadDir != null) {
-            final file = File(videoPath);
-            final fileName = videoPath.split('/').last;
-            final newPath = '$downloadDir/$fileName';
-
-            await file.copy(newPath);
-
-            // Try to scan the file so it appears in gallery
-            if (Platform.isAndroid) {
-              try {
-                // You might need to add media_scanner package for this
-                // await MediaScanner.loadMedia(path: newPath);
-                print('File copied to: $newPath');
-              } catch (e) {
-                print('Media scan failed: $e');
-              }
-            }
-
-            success = true;
-          }
-        } catch (e) {
-          print('Manual copy failed: $e');
-        }
-      }
-
-      if (success) {
-        setState(() {
-          _statusMessage = 'Video downloaded successfully!';
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Video saved successfully'),
-            backgroundColor: Colors.green,
-            duration: Duration(seconds: 2),
-          ),
-        );
-      } else {
-        throw Exception('All download methods failed');
-      }
-    } catch (e) {
-      print('Download error: $e');
-      setState(() {
-        _statusMessage = 'Failed to download video: ${e.toString()}';
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Download failed: ${e.toString()}'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 3),
-        ),
+    if (message.contains('successfully')) {
+      _showCustomSnackBar(
+        'Video saved successfully',
+        AppColors.successColor,
+        Icons.check_circle,
       );
-    } finally {
-      setState(() {
-        _downloadingVideos.remove(videoPath);
-      });
-
-      Future.delayed(Duration(seconds: 3), () {
-        if (mounted) {
-          setState(() {
-            _statusMessage = '';
-          });
-        }
-      });
+    } else if (message.contains('permission')) {
+      _showPermissionDialog();
+    } else {
+      _showCustomSnackBar(
+        'Download failed: $message',
+        AppColors.errorColor,
+        Icons.error,
+      );
     }
+
+    Future.delayed(Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _statusMessage = '';
+        });
+      }
+    });
   }
 
   Future<void> _downloadAllVideosSimple(VideoSession session) async {
-    if (_isBulkDownloading) return;
-
     setState(() {
-      _isBulkDownloading = true;
-      _downloadProgress = 0;
-      _totalDownloads = session.videos.length;
       _statusMessage = 'Starting download...';
     });
 
-    int successCount = 0;
-    int failCount = 0;
-
-    for (int i = 0; i < session.videos.length; i++) {
-      final video = session.videos[i];
-
-      setState(() {
-        _downloadProgress = i + 1;
-        _statusMessage =
-            'Downloading ${video.name} (${_downloadProgress}/$_totalDownloads)';
-      });
-
-      try {
-        // Direct download - let GallerySaver handle permissions
-        final result = await GallerySaver.saveVideo(
-          video.path,
-          albumName: "Auto Clipper",
-        );
-
-        if (result == true) {
-          successCount++;
-        } else {
-          failCount++;
-        }
-      } catch (e) {
-        failCount++;
-        print('Download failed for ${video.name}: $e');
-      }
-
-      // Small delay to prevent overwhelming the system
-      await Future.delayed(Duration(milliseconds: 100));
-    }
+    final message = await _controller.downloadAllVideosSimple(session, context);
 
     setState(() {
-      _isBulkDownloading = false;
-      _downloadProgress = 0;
-      _totalDownloads = 0;
-      _statusMessage = '$successCount videos downloaded successfully!';
+      _statusMessage = message;
     });
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$successCount videos downloaded, $failCount failed'),
-        backgroundColor: successCount > 0 ? Colors.green : Colors.red,
-      ),
+    final successCount = int.tryParse(message.split(' ').first) ?? 0;
+    final failCount = session.videos.length - successCount;
+
+    _showCustomSnackBar(
+      '$successCount videos downloaded, $failCount failed',
+      successCount > 0 ? AppColors.successColor : AppColors.errorColor,
+      successCount > 0 ? Icons.download_done : Icons.error,
     );
   }
 
   Future<void> _shareVideo(String videoPath) async {
     try {
-      await Share.shareXFiles([XFile(videoPath)]);
+      await _controller.shareVideo(videoPath);
+      _showCustomSnackBar('Sharing video...', AppColors.infoColor, Icons.share);
     } catch (e) {
       setState(() {
         _statusMessage = 'Failed to share video: $e';
@@ -339,176 +147,271 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen> {
 
   Future<void> _deleteSession(VideoSession session) async {
     try {
-      final sessionDir = Directory(session.sessionPath);
-      if (await sessionDir.exists()) {
-        await sessionDir.delete(recursive: true);
-        await _loadVideoSessions();
-        setState(() {
-          _statusMessage = 'Session deleted successfully';
-          _selectedSession = null;
-        });
+      await _controller.deleteSession(session);
+      await _loadVideoSessions();
+      setState(() {
+        _statusMessage = 'Session deleted successfully';
+        _selectedSession = null;
+      });
 
-        Future.delayed(Duration(seconds: 2), () {
-          if (mounted) {
-            setState(() {
-              _statusMessage = '';
-            });
-          }
-        });
-      }
+      Future.delayed(Duration(seconds: 2), () {
+        if (mounted) {
+          setState(() {
+            _statusMessage = '';
+          });
+        }
+      });
     } catch (e) {
       setState(() {
         _statusMessage = 'Failed to delete session: $e';
       });
     }
   }
-Future<String?> getDownloadDirectory() async {
-    if (Platform.isAndroid) {
-      // Try to get the Downloads directory
-      Directory? directory;
 
-      try {
-        directory = Directory('/storage/emulated/0/Download/Auto Clipper');
-        if (!await directory.exists()) {
-          await directory.create(recursive: true);
-        }
-        return directory.path;
-      } catch (e) {
-        print('Could not create download directory: $e');
-
-        // Fallback to app documents directory
-        final appDir = await getApplicationDocumentsDirectory();
-        final downloadDir = Directory('${appDir.path}/Downloads');
-        if (!await downloadDir.exists()) {
-          await downloadDir.create(recursive: true);
-        }
-        return downloadDir.path;
-      }
-    }
-    return null;
-  }
-
-  Widget _buildAppBar() {
-    return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10.r,
-            offset: Offset(0, 2.h),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          if (_selectedSession != null)
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  _selectedSession = null;
-                });
-              },
-              icon: Icon(Icons.arrow_back, size: 24.sp),
-              padding: EdgeInsets.zero,
-            ),
-          Expanded(
-            child: Text(
-              _selectedSession != null
-                  ? _selectedSession!.displayName
-                  : 'My Videos',
-              style: TextStyle(
-                fontSize: 24.sp,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF1A1A1A),
+  void _showCustomSnackBar(String message, Color color, IconData icon) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 20.sp),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Text(
+                message,
+                style: TextStyle(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                  color: Colors.white,
+                ),
               ),
             ),
-          ),
-          if (_selectedSession != null)
-            PopupMenuButton<String>(
-              onSelected: (value) {
-                if (value == 'delete_session') {
-                  _showDeleteSessionDialog(_selectedSession!);
-                }
-              },
-              itemBuilder:
-                  (context) => [
-                    PopupMenuItem(
-                      value: 'delete_session',
-                      child: Row(
-                        children: [
-                          Icon(Icons.delete, color: Colors.red),
-                          SizedBox(width: 8.w),
-                          Text('Delete Session'),
-                        ],
-                      ),
-                    ),
-                  ],
-            ),
-        ],
+          ],
+        ),
+        backgroundColor: color,
+        behavior: SnackBarBehavior.floating,
+        margin: EdgeInsets.all(16.r),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12.r),
+        ),
+        duration: Duration(seconds: 2),
       ),
     );
   }
 
-Future<bool> requestPermissions() async {
-    if (Platform.isAndroid) {
-      final androidInfo = await DeviceInfoPlugin().androidInfo;
-      final sdkInt = androidInfo.version.sdkInt;
-
-      print('Android SDK: $sdkInt');
-
-      if (sdkInt >= 33) {
-        // Android 13+ (API 33+) - Request specific media permissions
-        Map<Permission, PermissionStatus> statuses =
-            await [
-              Permission.videos,
-              Permission.photos,
-              Permission.audio,
-            ].request();
-
-        print('Permission statuses: $statuses');
-
-        // Check if all permissions are granted
-        bool allGranted = statuses.values.every(
-          (status) => status == PermissionStatus.granted,
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20.r),
+          ),
+          title: Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8.r),
+                decoration: BoxDecoration(
+                  gradient: AppColors.accentGradient,
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+                child: Icon(Icons.security, color: Colors.white, size: 20.sp),
+              ),
+              SizedBox(width: 12.w),
+              Text(
+                'Permission Required',
+                style: TextStyle(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          content: Text(
+            'Storage permission is required to download videos. Please grant permission in app settings.',
+            style: TextStyle(
+              fontSize: 14.sp,
+              color: AppColors.textSecondary,
+              height: 1.4,
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  color: AppColors.textSecondary,
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            Container(
+              decoration: BoxDecoration(
+                gradient: AppColors.primaryGradient,
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: TextButton(
+                child: Text(
+                  'Open Settings',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14.sp,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  openAppSettings();
+                },
+              ),
+            ),
+          ],
         );
-
-        return allGranted;
-      } else if (sdkInt >= 30) {
-        // Android 11-12 (API 30-32) - Request MANAGE_EXTERNAL_STORAGE
-        var manageStorageStatus = await Permission.manageExternalStorage.status;
-
-        if (!manageStorageStatus.isGranted) {
-          manageStorageStatus =
-              await Permission.manageExternalStorage.request();
-        }
-
-        // Also request regular storage permission as fallback
-        var storageStatus = await Permission.storage.status;
-        if (!storageStatus.isGranted) {
-          storageStatus = await Permission.storage.request();
-        }
-
-        print('Manage External Storage: $manageStorageStatus');
-        print('Storage: $storageStatus');
-
-        return manageStorageStatus.isGranted || storageStatus.isGranted;
-      } else {
-        // Android 10 and below - Request regular storage permission
-        var status = await Permission.storage.status;
-        if (!status.isGranted) {
-          status = await Permission.storage.request();
-        }
-
-        print('Storage permission: $status');
-        return status.isGranted;
-      }
-    }
-    return true;
+      },
+    );
   }
 
-  Widget _buildStorageInfo() {
+  Widget _buildGradientAppBar() {
+    return Container(
+      decoration: BoxDecoration(
+        gradient: AppColors.primaryGradient,
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primaryOrange.withOpacity(0.3),
+            blurRadius: 20.r,
+            offset: Offset(0, 4.h),
+          ),
+        ],
+      ),
+      child: SafeArea(
+        child: Padding(
+          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+          child: Row(
+            children: [
+              if (_selectedSession != null)
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _selectedSession = null;
+                    });
+                  },
+                  // child: Icon(
+                  //   Icons.arrow_back_ios_new,
+                  //   color: Colors.white,
+                  //   size: 20.sp,
+                  // ),
+                  child: Container(
+                    padding: EdgeInsets.all(8.r),
+                    // decoration: BoxDecoration(
+                    //   color: Colors.white.withOpacity(0.2),
+                    //   borderRadius: BorderRadius.circular(12.r),
+                    // ),
+                    child: Icon(
+                      Icons.arrow_back_ios_new,
+                      color: Colors.white,
+                      size: 20.sp,
+                    ),
+                  ),
+                ),
+              if (_selectedSession != null) SizedBox(width: 16.w),
+              Container(
+                padding: EdgeInsets.all(12.r),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(12.r),
+                ),
+                child: Icon(
+                  _selectedSession != null
+                      ? Icons.video_library
+                      : Icons.download_rounded,
+                  color: Colors.white,
+                  size: 20.sp,
+                ),
+              ),
+              SizedBox(width: 16.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _selectedSession != null
+                          ? _selectedSession!.displayName
+                          : 'My Downloads',
+                      style: TextStyle(
+                        fontSize: 22.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                      ),
+                    ),
+                    Text(
+                      _selectedSession != null
+                          ? 'Video Collection'
+                          : 'Professional Video Downloader',
+                      style: TextStyle(
+                        fontSize: 12.sp,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.w400,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (_selectedSession != null)
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12.r),
+                  ),
+                  child: PopupMenuButton<String>(
+                    icon: Icon(
+                      Icons.more_vert,
+                      color: Colors.white,
+                      size: 20.sp,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12.r),
+                    ),
+                    onSelected: (value) {
+                      if (value == 'delete_session') {
+                        _showDeleteSessionDialog(_selectedSession!);
+                      }
+                    },
+                    itemBuilder:
+                        (context) => [
+                          PopupMenuItem(
+                            value: 'delete_session',
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.delete_outline,
+                                  color: AppColors.errorColor,
+                                  size: 18.sp,
+                                ),
+                                SizedBox(width: 12.w),
+                                Text(
+                                  'Delete Session',
+                                  style: TextStyle(
+                                    fontSize: 14.sp,
+                                    color: AppColors.errorColor,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEnhancedStorageInfo() {
     final totalSessions = _sessions.length;
     final totalVideos = _sessions.fold<int>(
       0,
@@ -527,127 +430,358 @@ Future<bool> requestPermissions() async {
     String formattedTotalSize =
         totalSize < 1024 * 1024
             ? '${(totalSize / 1024).toStringAsFixed(1)} KB'
-            : '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB';
+            : totalSize < 1024 * 1024 * 1024
+            ? '${(totalSize / (1024 * 1024)).toStringAsFixed(1)} MB'
+            : '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
 
     return Container(
-      margin: EdgeInsets.all(16.r),
-      padding: EdgeInsets.all(20.r),
+      // Professional background with gradient
       decoration: BoxDecoration(
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(20.sp),
+          bottomRight: Radius.circular(20.sp),
+        ),
         gradient: LinearGradient(
-          colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
+          colors: [
+            Color(0xFF1A1A2E), // Dark navy
+            Color(0xFF16213E), // Darker blue
+            Color(0xFF0F0F23), // Deep dark
+          ],
+          stops: [0.0, 0.6, 1.0],
         ),
-        borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: Color(0xFF667EEA).withOpacity(0.3),
-            blurRadius: 20.r,
-            offset: Offset(0, 8.h),
-          ),
-        ],
       ),
-      child: Row(
-        children: [
-          Container(
-            padding: EdgeInsets.all(12.r),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Icon(
-              _selectedSession != null ? Icons.video_library : Icons.folder,
-              color: Colors.white,
-              size: 24.sp,
-            ),
-          ),
-          SizedBox(width: 16.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      child: SlideTransition(
+        position: _slideAnimation,
+        child: FadeTransition(
+          opacity: _fadeAnimation,
+          child: Container(
+            margin: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
+            child: Stack(
               children: [
-                Text(
-                  _selectedSession != null
-                      ? '${_selectedSession!.videos.length} Videos'
-                      : '$totalSessions Sessions',
-                  style: TextStyle(
-                    fontSize: 20.sp,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
+                // Subtle background pattern
+                Positioned.fill(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(20.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppColors.primaryPurple.withOpacity(0.1),
+                          blurRadius: 50.r,
+                          spreadRadius: 10.r,
+                          offset: Offset(0, 20.h),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                SizedBox(height: 4.h),
-                Text(
-                  _selectedSession != null
-                      ? 'Total: ${_selectedSession!.totalSize}'
-                      : '$totalVideos Videos • $formattedTotalSize',
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    color: Colors.white.withOpacity(0.8),
+                // Main professional card
+                Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.15),
+                        Colors.white.withOpacity(0.08),
+                        Colors.white.withOpacity(0.05),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(20.r),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.15),
+                      width: 1.2,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.2),
+                        blurRadius: 20.r,
+                        offset: Offset(0, 8.h),
+                      ),
+                      BoxShadow(
+                        color: AppColors.primaryPurple.withOpacity(0.1),
+                        blurRadius: 40.r,
+                        offset: Offset(0, 16.h),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20.r),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                      child: Container(
+                        padding: EdgeInsets.all(24.r),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withOpacity(0.12),
+                              Colors.white.withOpacity(0.04),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            // Header section
+                            Row(
+                              children: [
+                                // Professional icon container
+                                Container(
+                                  width: 64.w,
+                                  height: 64.h,
+                                  decoration: BoxDecoration(
+                                    gradient:
+                                        AppColors.glassBackground != null
+                                            ? LinearGradient(
+                                              colors: [
+                                                AppColors.primaryPurple
+                                                    .withOpacity(0.8),
+                                                AppColors.primaryPink
+                                                    .withOpacity(0.6),
+                                              ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            )
+                                            : AppColors.accentGradient,
+                                    borderRadius: BorderRadius.circular(16.r),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        color: AppColors.primaryPurple
+                                            .withOpacity(0.3),
+                                        blurRadius: 16.r,
+                                        offset: Offset(0, 8.h),
+                                      ),
+                                    ],
+                                  ),
+                                  child: Icon(
+                                    _selectedSession != null
+                                        ? Icons.video_library_outlined
+                                        : Icons.analytics_outlined,
+                                    color: Colors.white,
+                                    size: 28.sp,
+                                  ),
+                                ),
+                                SizedBox(width: 20.w),
+                                // Title and subtitle
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _selectedSession != null
+                                            ? 'Session Details'
+                                            : 'Storage Overview',
+                                        style: TextStyle(
+                                          fontSize: 16.sp,
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.white.withOpacity(0.7),
+                                          letterSpacing: 0.5,
+                                        ),
+                                      ),
+                                      SizedBox(height: 4.h),
+                                      Text(
+                                        _selectedSession != null
+                                            ? '${_selectedSession!.videos.length} Videos'
+                                            : '$totalSessions Sessions',
+                                        style: TextStyle(
+                                          fontSize: 24.sp,
+                                          fontWeight: FontWeight.w700,
+                                          color: Colors.white,
+                                          letterSpacing: -0.5,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 24.h),
+                            // Stats section
+                            Container(
+                              padding: EdgeInsets.all(20.r),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.05),
+                                borderRadius: BorderRadius.circular(16.r),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.1),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  // Left stats
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Total Videos',
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.white.withOpacity(
+                                              0.6,
+                                            ),
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4.h),
+                                        Text(
+                                          _selectedSession != null
+                                              ? '${_selectedSession!.videos.length}'
+                                              : '$totalVideos',
+                                          style: TextStyle(
+                                            fontSize: 20.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  // Divider
+                                  Container(
+                                    width: 1.w,
+                                    height: 40.h,
+                                    color: Colors.white.withOpacity(0.15),
+                                  ),
+                                  SizedBox(width: 20.w),
+                                  // Right stats
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Storage Used',
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            fontWeight: FontWeight.w500,
+                                            color: Colors.white.withOpacity(
+                                              0.6,
+                                            ),
+                                            letterSpacing: 0.3,
+                                          ),
+                                        ),
+                                        SizedBox(height: 4.h),
+                                        Text(
+                                          _selectedSession != null
+                                              ? _selectedSession!.totalSize
+                                              : formattedTotalSize,
+                                          style: TextStyle(
+                                            fontSize: 20.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.white,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                // Top highlight
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Container(
+                    height: 1.h,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [
+                          Colors.transparent,
+                          Colors.white.withOpacity(0.2),
+                          Colors.transparent,
+                        ],
+                      ),
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20.r),
+                        topRight: Radius.circular(20.r),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
 
-  Widget _buildStatusMessage() {
+  Widget _buildEnhancedStatusMessage() {
     if (_statusMessage.isEmpty) return SizedBox.shrink();
 
     final isError =
         _statusMessage.toLowerCase().contains('error') ||
         _statusMessage.toLowerCase().contains('failed');
-    final isDownloading = _isBulkDownloading;
+    final isDownloading = _controller.isBulkDownloading;
+
+    Color statusColor =
+        isError
+            ? AppColors.errorColor
+            : isDownloading
+            ? AppColors.infoColor
+            : AppColors.successColor;
+
+    IconData statusIcon =
+        isError
+            ? Icons.error_outline
+            : isDownloading
+            ? Icons.download
+            : Icons.check_circle_outline;
 
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-      padding: EdgeInsets.all(12.r),
+      margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
+      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
-        color:
-            isError
-                ? Colors.red.shade50
-                : isDownloading
-                ? Colors.blue.shade50
-                : Colors.green.shade50,
-        borderRadius: BorderRadius.circular(8.r),
-        border: Border.all(
-          color:
-              isError
-                  ? Colors.red.shade200
-                  : isDownloading
-                  ? Colors.blue.shade200
-                  : Colors.green.shade200,
+        gradient: LinearGradient(
+          colors: [statusColor.withOpacity(0.1), statusColor.withOpacity(0.05)],
+          begin: Alignment.centerLeft,
+          end: Alignment.centerRight,
         ),
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
       ),
       child: Row(
         children: [
           if (isDownloading)
             SizedBox(
-              width: 20.w,
-              height: 20.w,
-              child: CircularProgressIndicator(strokeWidth: 2),
+              width: 24.w,
+              height: 24.w,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.5,
+                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+              ),
             )
           else
-            Icon(
-              isError ? Icons.error_outline : Icons.check_circle_outline,
-              color: isError ? Colors.red : Colors.green,
-              size: 20.sp,
+            Container(
+              padding: EdgeInsets.all(6.r),
+              decoration: BoxDecoration(
+                color: statusColor.withOpacity(0.2),
+                borderRadius: BorderRadius.circular(8.r),
+              ),
+              child: Icon(statusIcon, color: statusColor, size: 16.sp),
             ),
-          SizedBox(width: 8.w),
+          SizedBox(width: 12.w),
           Expanded(
             child: Text(
               _statusMessage,
               style: TextStyle(
                 fontSize: 14.sp,
-                color:
-                    isError
-                        ? Colors.red.shade700
-                        : isDownloading
-                        ? Colors.blue.shade700
-                        : Colors.green.shade700,
+                color: statusColor,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
@@ -658,108 +792,167 @@ Future<bool> requestPermissions() async {
 
   Widget _buildSessionsList() {
     return ListView.builder(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      shrinkWrap: true, // Add this
+      physics: NeverScrollableScrollPhysics(), // Add this
+      padding: EdgeInsets.symmetric(horizontal: 20.w),
       itemCount: _sessions.length,
       itemBuilder: (context, index) {
-        final session = _sessions[index];
-        return _buildSessionItem(session);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(0, 0.1),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: _animationController,
+              curve: Interval(
+                (index * 0.1).clamp(0.0, 1.0),
+                1.0,
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+          ),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: _buildEnhancedSessionItem(_sessions[index]),
+          ),
+        );
       },
     );
   }
 
- Widget _buildSessionItem(VideoSession session) {
+  Widget _buildEnhancedSessionItem(VideoSession session) {
     return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
+      margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: AppColors.borderLight, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10.r,
+            color: AppColors.shadowLight,
+            blurRadius: 15.r,
             offset: Offset(0, 4.h),
           ),
         ],
       ),
-      child: Padding(
-        padding: EdgeInsets.all(16.r),
-        child: Column(
-          children: [
-            // Existing row content
-            InkWell(
-              onTap: () {
-                setState(() {
-                  _selectedSession = session;
-                });
-              },
-              borderRadius: BorderRadius.circular(16.r),
-              child: Row(
-                children: [
-                  // Your existing session item content
-                  Container(
-                    width: 60.w,
-                    height: 60.w,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () {
+            setState(() {
+              _selectedSession = session;
+            });
+          },
+          borderRadius: BorderRadius.circular(20.r),
+          child: Padding(
+            padding: EdgeInsets.all(20.r),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 60.w,
+                      height: 60.w,
+                      decoration: BoxDecoration(
+                        gradient: AppColors.primaryGradient,
+                        borderRadius: BorderRadius.circular(16.r),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.primaryOrange.withOpacity(0.3),
+                            blurRadius: 12.r,
+                            offset: Offset(0, 4.h),
+                          ),
+                        ],
                       ),
-                      borderRadius: BorderRadius.circular(12.r),
+                      child: Icon(
+                        Icons.folder_open,
+                        color: Colors.white,
+                        size: 28.sp,
+                      ),
                     ),
-                    child: Icon(Icons.folder, color: Colors.white, size: 28.sp),
-                  ),
-                  SizedBox(width: 16.w),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          session.displayName,
-                          style: TextStyle(
-                            fontSize: 16.sp,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A1A1A),
+                    SizedBox(width: 16.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            session.displayName,
+                            style: TextStyle(
+                              fontSize: 18.sp,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.textPrimary,
+                            ),
                           ),
-                        ),
-                        SizedBox(height: 4.h),
-                        Text(
-                          '${session.videos.length} videos • ${session.totalSize}',
-                          style: TextStyle(
-                            fontSize: 14.sp,
-                            color: Colors.grey.shade600,
+                          SizedBox(height: 4.h),
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.w,
+                              vertical: 2.h,
+                            ),
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryBlue.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6.r),
+                            ),
+                            child: Text(
+                              '${session.videos.length} videos • ${session.totalSize}',
+                              style: TextStyle(
+                                fontSize: 12.sp,
+                                color: AppColors.primaryBlue,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                  Icon(
-                    Icons.chevron_right,
-                    color: Colors.grey.shade400,
-                    size: 24.sp,
-                  ),
-                ],
-              ),
+                    Container(
+                      padding: EdgeInsets.all(8.r),
+                      decoration: BoxDecoration(
+                        color: AppColors.backgroundColor,
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      child: Icon(
+                        Icons.arrow_forward_ios,
+                        color: AppColors.textSecondary,
+                        size: 16.sp,
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                _buildEnhancedActionButton(
+                  icon:
+                      _controller.isBulkDownloading &&
+                              _selectedSession == session
+                          ? SizedBox(
+                            width: 20.w,
+                            height: 20.w,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                          : Icon(
+                            Icons.download_rounded,
+                            size: 20.sp,
+                            color: Colors.white,
+                          ),
+                  label:
+                      _controller.isBulkDownloading &&
+                              _selectedSession == session
+                          ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
+                          : 'Download All Videos',
+                  onTap:
+                      _controller.isBulkDownloading
+                          ? null
+                          : () => _downloadAllVideosSimple(session),
+                  gradient: AppColors.primaryGradient,
+                ),
+              ],
             ),
-
-            // Add download button
-            SizedBox(height: 12.h),
-            _buildActionButton(
-              icon:
-                  _isBulkDownloading && _selectedSession == session
-                      ? SizedBox(
-                        width: 18.w,
-                        height: 18.w,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                      : Icon(Icons.download, size: 18.sp),
-              label:
-                  _isBulkDownloading && _selectedSession == session
-                      ? 'Downloading ${_downloadProgress}/${_totalDownloads}'
-                      : 'Download All',
-              onTap:
-                  _isBulkDownloading ? null : () => _downloadAllVideosSimple(session),
-              color: Color(0xFF4CAF50),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -769,31 +962,53 @@ Future<bool> requestPermissions() async {
     if (_selectedSession == null) return _buildSessionsList();
 
     return ListView.builder(
-      padding: EdgeInsets.symmetric(horizontal: 16.w),
+      shrinkWrap: true, // Add this
+      physics: NeverScrollableScrollPhysics(), // Add this
+      padding: EdgeInsets.symmetric(horizontal: 20.w),
       itemCount: _selectedSession!.videos.length,
       itemBuilder: (context, index) {
-        final video = _selectedSession!.videos[index];
-        return _buildVideoItem(video);
+        return SlideTransition(
+          position: Tween<Offset>(
+            begin: Offset(0, 0.1),
+            end: Offset.zero,
+          ).animate(
+            CurvedAnimation(
+              parent: _animationController,
+              curve: Interval(
+                (index * 0.05).clamp(0.0, 1.0),
+                1.0,
+                curve: Curves.easeOutCubic,
+              ),
+            ),
+          ),
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: _buildEnhancedVideoItem(_selectedSession!.videos[index]),
+          ),
+        );
       },
     );
   }
 
-  Widget _buildVideoItem(ProcessedVideo video) {
+  Widget _buildEnhancedVideoItem(ProcessedVideo video) {
+    final isDownloading = _controller.downloadingVideos.contains(video.path);
+
     return Container(
-      margin: EdgeInsets.only(bottom: 12.h),
+      margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
+        color: AppColors.cardBackground,
+        borderRadius: BorderRadius.circular(20.r),
+        border: Border.all(color: AppColors.borderLight, width: 1),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10.r,
+            color: AppColors.shadowLight,
+            blurRadius: 15.r,
             offset: Offset(0, 4.h),
           ),
         ],
       ),
       child: Padding(
-        padding: EdgeInsets.all(16.r),
+        padding: EdgeInsets.all(20.r),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -803,15 +1018,20 @@ Future<bool> requestPermissions() async {
                   width: 60.w,
                   height: 60.w,
                   decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [Color(0xFF667EEA), Color(0xFF764BA2)],
-                    ),
-                    borderRadius: BorderRadius.circular(12.r),
+                    gradient: AppColors.secondaryGradient,
+                    borderRadius: BorderRadius.circular(16.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primaryBlue.withOpacity(0.3),
+                        blurRadius: 12.r,
+                        offset: Offset(0, 4.h),
+                      ),
+                    ],
                   ),
                   child: Icon(
-                    Icons.play_arrow,
+                    Icons.play_circle_filled,
                     color: Colors.white,
-                    size: 28.sp,
+                    size: 32.sp,
                   ),
                 ),
                 SizedBox(width: 16.w),
@@ -824,35 +1044,41 @@ Future<bool> requestPermissions() async {
                         style: TextStyle(
                           fontSize: 16.sp,
                           fontWeight: FontWeight.bold,
-                          color: Color(0xFF1A1A1A),
+                          color: AppColors.textPrimary,
                         ),
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                       ),
-                      SizedBox(height: 4.h),
+                      SizedBox(height: 6.h),
                       Row(
                         children: [
-                          Icon(
-                            Icons.access_time,
-                            size: 14.sp,
-                            color: Colors.grey,
-                          ),
-                          SizedBox(width: 4.w),
-                          Text(
-                            video.formattedDuration,
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: Colors.grey.shade600,
+                          Container(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: 8.w,
+                              vertical: 2.h,
                             ),
-                          ),
-                          SizedBox(width: 16.w),
-                          Icon(Icons.storage, size: 14.sp, color: Colors.grey),
-                          SizedBox(width: 4.w),
-                          Text(
-                            video.formattedSize,
-                            style: TextStyle(
-                              fontSize: 12.sp,
-                              color: Colors.grey.shade600,
+                            decoration: BoxDecoration(
+                              color: AppColors.primaryCyan.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(6.r),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.storage,
+                                  size: 12.sp,
+                                  color: AppColors.primaryCyan,
+                                ),
+                                SizedBox(width: 4.w),
+                                Text(
+                                  video.formattedSize,
+                                  style: TextStyle(
+                                    fontSize: 11.sp,
+                                    color: AppColors.primaryCyan,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
@@ -862,37 +1088,48 @@ Future<bool> requestPermissions() async {
                 ),
               ],
             ),
-            SizedBox(height: 16.h),
+            SizedBox(height: 20.h),
             Row(
               children: [
+                // Expanded(
+                //   flex: 2,
+                //   child: _buildEnhancedActionButton(
+                //     icon:
+                //         isDownloading
+                //             ? SizedBox(
+                //               width: 18.w,
+                //               height: 18.w,
+                //               child: CircularProgressIndicator(
+                //                 strokeWidth: 2,
+                //                 valueColor: AlwaysStoppedAnimation<Color>(
+                //                   Colors.white,
+                //                 ),
+                //               ),
+                //             )
+                //             : Icon(
+                //               Icons.download_rounded,
+                //               size: 18.sp,
+                //               color: Colors.white,
+                //             ),
+                //     label: isDownloading ? 'Downloading...' : 'Download',
+                //     onTap:
+                //         isDownloading
+                //             ? null
+                //             : () => _downloadToGallery(video.path),
+                //     gradient: AppColors.primaryGradient,
+                //   ),
+                // ),
+                SizedBox(width: 12.w),
                 Expanded(
-                  child: _buildActionButton(
-                    icon:
-                        _downloadingVideos.contains(video.path)
-                            ? SizedBox(
-                              width: 18.w,
-                              height: 18.w,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                            : Icon(Icons.download, size: 18.sp),
-                    label:
-                        _downloadingVideos.contains(video.path)
-                            ? 'Downloading...'
-                            : 'Download',
-                    onTap:
-                        _downloadingVideos.contains(video.path)
-                            ? null
-                            : () => _downloadToGallery(video.path),
-                    color: Color(0xFF4CAF50),
-                  ),
-                ),
-                SizedBox(width: 8.w),
-                Expanded(
-                  child: _buildActionButton(
-                    icon: Icon(Icons.share, size: 18.sp),
+                  child: _buildEnhancedActionButton(
+                    icon: Icon(
+                      Icons.share_rounded,
+                      size: 18.sp,
+                      color: Colors.white,
+                    ),
                     label: 'Share',
                     onTap: () => _shareVideo(video.path),
-                    color: Color(0xFF2196F3),
+                    gradient: AppColors.accentGradient,
                   ),
                 ),
               ],
@@ -903,88 +1140,136 @@ Future<bool> requestPermissions() async {
     );
   }
 
-  Widget _buildActionButton({
+  Widget _buildEnhancedActionButton({
     required Widget icon,
     required String label,
     required VoidCallback? onTap,
-    required Color color,
+    required Gradient gradient,
   }) {
-    return Material(
-      color: color.withOpacity(0.1),
-      borderRadius: BorderRadius.circular(8.r),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8.r),
-        child: Container(
-          padding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              icon,
-              if (label.isNotEmpty) ...[
-                SizedBox(width: 8.w),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                    color: color,
-                  ),
+    return Container(
+      height: 48.h,
+      decoration: BoxDecoration(
+        gradient:
+            onTap != null
+                ? gradient
+                : LinearGradient(
+                  colors: [
+                    AppColors.textTertiary.withOpacity(0.3),
+                    AppColors.textTertiary.withOpacity(0.2),
+                  ],
                 ),
+        borderRadius: BorderRadius.circular(14.r),
+        boxShadow:
+            onTap != null
+                ? [
+                  BoxShadow(
+                    color:
+                        gradient == AppColors.primaryGradient
+                            ? AppColors.primaryOrange.withOpacity(0.3)
+                            : AppColors.primaryPink.withOpacity(0.3),
+                    blurRadius: 12.r,
+                    offset: Offset(0, 4.h),
+                  ),
+                ]
+                : null,
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14.r),
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 16.w),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                icon,
+                if (label.isNotEmpty) ...[
+                  SizedBox(width: 8.w),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 14.sp,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ],
-            ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildEnhancedEmptyState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Container(
-            padding: EdgeInsets.all(32.r),
+            padding: EdgeInsets.all(40.r),
             decoration: BoxDecoration(
-              color: Colors.grey.shade100,
+              gradient: LinearGradient(
+                colors: [
+                  AppColors.primaryBlue.withOpacity(0.1),
+                  AppColors.primaryPurple.withOpacity(0.1),
+                ],
+              ),
               shape: BoxShape.circle,
             ),
             child: Icon(
               Icons.video_library_outlined,
               size: 64.sp,
-              color: Colors.grey.shade400,
+              color: AppColors.textTertiary,
             ),
           ),
           SizedBox(height: 24.h),
           Text(
             'No videos found',
             style: TextStyle(
-              fontSize: 20.sp,
+              fontSize: 22.sp,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
+              color: AppColors.textPrimary,
             ),
           ),
           SizedBox(height: 8.h),
           Text(
             'Process some videos to see them here',
-            style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade500),
+            style: TextStyle(fontSize: 14.sp, color: AppColors.textSecondary),
           ),
+          SizedBox(height: 24.h),
         ],
       ),
     );
   }
 
-  Widget _buildLoadingState() {
+  Widget _buildEnhancedLoadingState() {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 16.h),
+          SizedBox(
+            width: 60.w,
+            height: 60.w,
+            child: CircularProgressIndicator(
+              strokeWidth: 4,
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+            ),
+          ),
+          SizedBox(height: 24.h),
           Text(
             'Loading videos...',
-            style: TextStyle(fontSize: 16.sp, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 16.sp,
+              color: AppColors.textSecondary,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
@@ -995,192 +1280,130 @@ Future<bool> requestPermissions() async {
     showDialog(
       context: context,
       builder:
-          (context) => AlertDialog(
-            title: Text('Delete Session'),
-            content: Text(
-              'Are you sure you want to delete "${session.displayName}" and all its videos?',
+          (context) => Dialog(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24.r),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text('Cancel'),
+            backgroundColor: AppColors.cardBackground,
+            child: Padding(
+              padding: EdgeInsets.all(24.r),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(12.r),
+                        decoration: BoxDecoration(
+                          color: AppColors.errorColor.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: Icon(
+                          Icons.delete_outline,
+                          color: AppColors.errorColor,
+                          size: 24.sp,
+                        ),
+                      ),
+                      SizedBox(width: 16.w),
+                      Text(
+                        'Delete Session',
+                        style: TextStyle(
+                          fontSize: 20.sp,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 24.h),
+                  Text(
+                    'Are you sure you want to delete "${session.displayName}" and all its videos?',
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      color: AppColors.textSecondary,
+                      height: 1.5,
+                    ),
+                  ),
+                  SizedBox(height: 32.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(context),
+                        child: Text(
+                          'Cancel',
+                          style: TextStyle(
+                            fontSize: 14.sp,
+                            color: AppColors.textSecondary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 16.w),
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppColors.errorColor,
+                              AppColors.errorColor.withOpacity(0.8),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                        child: TextButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _deleteSession(session);
+                          },
+                          child: Text(
+                            'Delete',
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _deleteSession(session);
-                },
-                child: Text('Delete', style: TextStyle(color: Colors.red)),
-              ),
-            ],
+            ),
           ),
     );
   }
 
-Future<void> _downloadAllVideos(VideoSession session) async {
-    if (_isBulkDownloading) return;
-
-    setState(() {
-      _isBulkDownloading = true;
-      _downloadProgress = 0;
-      _totalDownloads = session.videos.length;
-      _statusMessage = 'Requesting permissions...';
-    });
-
-    try {
-      // Request permissions first
-      bool permissionGranted = await requestPermissions();
-
-      if (!permissionGranted) {
-        setState(() {
-          _statusMessage = 'Storage permission is required for bulk download';
-          _isBulkDownloading = false;
-        });
-
-        // Show settings dialog
-        showDialog(
-          context: context,
-          builder: (BuildContext context) {
-            return AlertDialog(
-              title: Text('Permission Required'),
-              content: Text(
-                'Storage permission is required for bulk download. Please grant permission in app settings.',
-              ),
-              actions: [
-                TextButton(
-                  child: Text('Cancel'),
-                  onPressed: () => Navigator.of(context).pop(),
-                ),
-                TextButton(
-                  child: Text('Open Settings'),
-                  onPressed: () {
-                    Navigator.of(context).pop();
-                    openAppSettings();
-                  },
-                ),
-              ],
-            );
-          },
-        );
-        return;
-      }
-
-      int successCount = 0;
-      int failCount = 0;
-
-      // Get download directory once
-      final downloadDir = await getDownloadDirectory();
-
-      for (int i = 0; i < session.videos.length; i++) {
-        final video = session.videos[i];
-
-        setState(() {
-          _downloadProgress = i + 1;
-          _statusMessage =
-              'Downloading ${video.name} (${_downloadProgress}/$_totalDownloads)';
-        });
-
-        try {
-          bool success = false;
-
-          // Try GallerySaver first
-          try {
-            final result = await GallerySaver.saveVideo(
-              video.path,
-              albumName: "Auto Clipper",
-            );
-            success = result == true;
-          } catch (e) {
-            print('GallerySaver failed for ${video.name}: $e');
-          }
-
-          // If GallerySaver fails, try manual copy
-          if (!success && downloadDir != null) {
-            try {
-              final file = File(video.path);
-              final fileName = video.path.split('/').last;
-              final newPath = '$downloadDir/$fileName';
-
-              await file.copy(newPath);
-              success = true;
-            } catch (e) {
-              print('Manual copy failed for ${video.name}: $e');
-            }
-          }
-
-          if (success) {
-            successCount++;
-          } else {
-            failCount++;
-          }
-        } catch (e) {
-          print('Failed to download ${video.name}: $e');
-          failCount++;
-        }
-
-        // Shorter delay between downloads
-        await Future.delayed(Duration(milliseconds: 500));
-      }
-
-      setState(() {
-        if (failCount == 0) {
-          _statusMessage = 'All $successCount videos downloaded successfully!';
-        } else {
-          _statusMessage = '$successCount videos downloaded, $failCount failed';
-        }
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            failCount == 0
-                ? 'All videos downloaded successfully!'
-                : '$successCount downloaded, $failCount failed',
-          ),
-          backgroundColor: failCount == 0 ? Colors.green : Colors.orange,
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } catch (e) {
-      setState(() {
-        _statusMessage = 'Bulk download failed: ${e.toString()}';
-      });
-    } finally {
-      setState(() {
-        _isBulkDownloading = false;
-        _downloadProgress = 0;
-        _totalDownloads = 0;
-      });
-
-      Future.delayed(Duration(seconds: 4), () {
-        if (mounted) {
-          setState(() {
-            _statusMessage = '';
-          });
-        }
-      });
-    }
-  } 
-
-
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color(0xFFF8F9FA),
+      backgroundColor: AppColors.backgroundColor,
       body: SafeArea(
         child: Column(
           children: [
-            _buildAppBar(),
-            _buildStorageInfo(),
-            _buildStatusMessage(),
+            _buildGradientAppBar(), // Fixed app bar
             Expanded(
-              child:
-                  _isLoading
-                      ? _buildLoadingState()
-                      : _sessions.isEmpty
-                      ? _buildEmptyState()
-                      : _buildVideosList(),
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildEnhancedStorageInfo(),
+                    _buildEnhancedStatusMessage(),
+                    SizedBox(height: 10.sp),
+                    _isLoading
+                        ? SizedBox(
+                          height: 300.h, // Give loading state a fixed height
+                          child: _buildEnhancedLoadingState(),
+                        )
+                        : _sessions.isEmpty
+                        ? SizedBox(
+                          height: 400.h, // Give empty state a fixed height
+                          child: _buildEnhancedEmptyState(),
+                        )
+                        : _buildVideosList(),
+                  ],
+                ),
+              ),
             ),
           ],
         ),

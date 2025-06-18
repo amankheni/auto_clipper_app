@@ -1,6 +1,5 @@
 // colors.dart
 import 'package:flutter/material.dart';
-
 class AppColors {
   // Primary gradient colors inspired by the scissors logo
   static const Color primaryOrange = Color(0xFFFF6B35);
@@ -59,4 +58,6 @@ class AppColors {
   // Glass effect colors
   static const Color glassBackground = Color(0x1AFFFFFF);
   static const Color glassBorder = Color(0x33FFFFFF);
+  static const Color glassBackgroundwhite = Colors.white;
+  
 }

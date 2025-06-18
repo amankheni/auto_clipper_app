@@ -1,7 +1,6 @@
 // Updated main.dart with error handling and performance fixes
 
 import 'dart:async';
-import 'dart:isolate';
 
 import 'package:auto_clipper_app/Screens/splesh_screen.dart';
 import 'package:flutter/foundation.dart';

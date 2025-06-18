@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "596242351058",
+    "project_id": "auto-clipper-55fad",
+    "storage_bucket": "auto-clipper-55fad.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:596242351058:android:25c243fe88db79a4d07e0b",
+        "android_client_info": {
+          "package_name": "com.honorixinnovation.auto_clipper"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3abvSKv37cef7P_lGxqLxrAuCdCBdYag"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
