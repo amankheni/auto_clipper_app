@@ -3,10 +3,13 @@
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:video_thumbnail/video_thumbnail.dart';
+import 'package:path/path.dart' as path;
 
 class VideoDownloadController {
   final Set<String> _downloadingVideos = {};
@@ -19,72 +22,58 @@ class VideoDownloadController {
   int get downloadProgress => _downloadProgress;
   int get totalDownloads => _totalDownloads;
 
-  Future<List<VideoSession>> loadVideoSessions() async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final videosDir = Directory('${appDir.path}/processed_videos');
 
-    if (!await videosDir.exists()) {
-      await videosDir.create(recursive: true);
-      return [];
-    }
+ Future<List<VideoSession>> loadVideoSessions() async {
+  final appDir = await getApplicationDocumentsDirectory();
+  final videosDir = Directory('${appDir.path}/processed_videos');
 
-    final sessionDirs =
-        await videosDir
-            .list()
-            .where(
-              (entity) =>
-                  entity is Directory && entity.path.contains('session_'),
-            )
-            .cast<Directory>()
-            .toList();
-
-    List<VideoSession> sessions = [];
-
-    for (Directory sessionDir in sessionDirs) {
-      final sessionId = sessionDir.path.split('/').last;
-      final timestamp = int.tryParse(sessionId.replaceAll('session_', '')) ?? 0;
-      final createdAt = DateTime.fromMillisecondsSinceEpoch(timestamp);
-
-      final videoFiles =
-          await sessionDir
-              .list()
-              .where(
-                (entity) =>
-                    entity is File &&
-                    entity.path.toLowerCase().endsWith('.mp4'),
-              )
-              .cast<File>()
-              .toList();
-
-      List<ProcessedVideo> videos = [];
-      for (File file in videoFiles) {
-        final stat = await file.stat();
-        videos.add(
-          ProcessedVideo(
-            path: file.path,
-            name: file.path.split('/').last,
-            createdAt: stat.modified,
-            fileSizeInBytes: stat.size,
-            durationInSeconds: await _getVideoDuration(file.path),
-          ),
-        );
-      }
-
-      if (videos.isNotEmpty) {
-        sessions.add(
-          VideoSession(
-            sessionId: sessionId,
-            sessionPath: sessionDir.path,
-            createdAt: createdAt,
-            videos: videos,
-          ),
-        );
-      }
-    }
-
-    sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return sessions;
+  if (!await videosDir.exists()) {
+    await videosDir.create(recursive: true);
+    return [];
   }
+
+  final sessionDirs = await videosDir.list()
+      .where((entity) => entity is Directory && entity.path.contains('session_'))
+      .cast<Directory>()
+      .toList();
+
+  List<VideoSession> sessions = [];
+
+  for (Directory sessionDir in sessionDirs) {
+    final videoFiles = await sessionDir.list()
+        .where((entity) => entity is File && entity.path.toLowerCase().endsWith('.mp4'))
+        .cast<File>()
+        .toList();
+
+    List<ProcessedVideo> videos = [];
+    for (File file in videoFiles) {
+      final stat = await file.stat();
+      final video = ProcessedVideo(
+        path: file.path,
+        name: path.basename(file.path),
+        createdAt: stat.modified,
+        fileSizeInBytes: stat.size,
+        durationInSeconds: await _getVideoDuration(file.path),
+      );
+      await video.generateThumbnail();
+      videos.add(video);
+    }
+
+    if (videos.isNotEmpty) {
+      sessions.add(VideoSession(
+  sessionId: sessionDir.path.split('/').last,
+  sessionPath: sessionDir.path,
+  createdAt: DateTime.fromMillisecondsSinceEpoch(
+    int.parse(sessionDir.path.split('_').last),
+  ),
+  videos: videos, // Changed from 'video' to 'videos'
+));
+    }
+  }
+
+  sessions.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  return sessions;
+}
 
   Future<int> _getVideoDuration(String videoPath) async {
     try {
@@ -99,59 +88,40 @@ class VideoDownloadController {
     return 0;
   }
 
-  Future<String> downloadToGallery(
-    String videoPath,
-    BuildContext context,
-  ) async {
-    if (_downloadingVideos.contains(videoPath)) return 'Already downloading';
-
-    _downloadingVideos.add(videoPath);
-
+// Corrected downloadToGallery method
+  Future<String> downloadToGallery(String videoPath) async {
     try {
-      bool permissionGranted = await requestPermissions();
-
-      if (!permissionGranted) {
-        return 'Please grant storage permission in app settings';
-      }
-
-      bool success = false;
-      try {
-        final result = await GallerySaver.saveVideo(
-          videoPath,
-          albumName: "Auto Clipper",
-        );
-        success = result == true;
-      } catch (e) {
-        print('GallerySaver failed: $e');
-        success = false;
-      }
-
-      if (!success) {
-        try {
-          final downloadDir = await getDownloadDirectory();
-          if (downloadDir != null) {
-            final file = File(videoPath);
-            final fileName = videoPath.split('/').last;
-            final newPath = '$downloadDir/$fileName';
-
-            await file.copy(newPath);
-            success = true;
+      // Check permissions
+      if (Platform.isAndroid) {
+        final androidInfo = await DeviceInfoPlugin().androidInfo;
+        if (androidInfo.version.sdkInt >= 30) {
+          if (!await Permission.manageExternalStorage.isGranted) {
+            return 'Manage external storage permission required';
           }
-        } catch (e) {
-          print('Manual copy failed: $e');
         }
       }
 
-      if (success) {
-        return 'Video downloaded successfully!';
-      } else {
-        throw Exception('All download methods failed');
+      final file = File(videoPath);
+      if (!await file.exists()) {
+        return 'Video file not found';
       }
+
+      final fileName = path.basename(videoPath);
+      final downloadsDir = await getDownloadsDirectory();
+      final destinationPath = '${downloadsDir?.path}/$fileName';
+
+      await file.copy(destinationPath);
+
+      if (Platform.isAndroid) {
+        await GallerySaver.saveVideo(
+          destinationPath,
+          albumName: "Auto Clipper",
+        );
+      }
+
+      return 'Video downloaded successfully!';
     } catch (e) {
-      print('Download error: $e');
       return 'Failed to download video: ${e.toString()}';
-    } finally {
-      _downloadingVideos.remove(videoPath);
     }
   }
 
@@ -280,6 +250,21 @@ class VideoDownloadController {
     }
     return true;
   }
+
+  Future<void> renameVideo(ProcessedVideo video, String newName) async {
+    try {
+      final file = File(video.path);
+      final directory = file.parent;
+      final newPath = '${directory.path}/$newName.mp4';
+      await file.rename(newPath);
+    } catch (e) {
+      print('Error renaming video: $e');
+      throw Exception('Failed to rename video: $e');
+    }
+  }
+
+
+
 }
 
 class VideoSession {
@@ -312,13 +297,13 @@ class VideoSession {
     }
   }
 }
-
 class ProcessedVideo {
   final String path;
   final String name;
   final DateTime createdAt;
   final int fileSizeInBytes;
   final int durationInSeconds;
+  String? thumbnailPath;
 
   ProcessedVideo({
     required this.path,
@@ -327,6 +312,19 @@ class ProcessedVideo {
     required this.fileSizeInBytes,
     required this.durationInSeconds,
   });
+
+  Future<void> generateThumbnail() async {
+    try {
+      thumbnailPath = await VideoThumbnail.thumbnailFile(
+        video: path,
+        thumbnailPath: (await getTemporaryDirectory()).path,
+        imageFormat: ImageFormat.JPEG,
+        quality: 75,
+      );
+    } catch (e) {
+      print('Error generating thumbnail: $e');
+    }
+  }
 
   String get formattedSize {
     if (fileSizeInBytes < 1024 * 1024) {

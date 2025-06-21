@@ -1,32 +1,111 @@
 // ignore_for_file: use_build_context_synchronously
 
+import 'package:auto_clipper_app/Logic/open_app_ads_controller.dart';
 import 'package:auto_clipper_app/bottomnavigationbar_scren.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
-class SimpleSplashScreen extends StatelessWidget {
+import 'package:firebase_remote_config/firebase_remote_config.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_core/firebase_core.dart';
+
+class SimpleSplashScreen extends StatefulWidget {
+  @override
+  _SimpleSplashScreenState createState() => _SimpleSplashScreenState();
+}
+
+class _SimpleSplashScreenState extends State<SimpleSplashScreen> {
+  final AppOpenAdManager _adManager = AppOpenAdManager();
+  bool _initialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      // Initialize Firebase
+      await Firebase.initializeApp();
+
+      // Initialize Remote Config
+      final remoteConfig = FirebaseRemoteConfig.instance;
+      await remoteConfig.setConfigSettings(
+        RemoteConfigSettings(
+          fetchTimeout: const Duration(seconds: 10),
+          minimumFetchInterval:
+              kDebugMode
+                  ? const Duration(minutes: 5)
+                  : const Duration(hours: 12),
+        ),
+      );
+
+      // Set default values
+      await remoteConfig.setDefaults({
+        'ads_enabled': true,
+        'ads_test_mode': kDebugMode,
+        'open_app_ads_enabled': true,
+        'open_app_ad_unit_id': 'ca-app-pub-7772180367051787/1234567890',
+        'open_app_ad_unit_id_test': 'ca-app-pub-3940256099942544/3419835294',
+      });
+
+      // Fetch and activate
+      await remoteConfig.fetchAndActivate();
+
+      // Initialize Mobile Ads SDK
+      await MobileAds.instance.initialize();
+
+      // Load the app open ad
+      await _adManager.loadAd();
+
+      // Wait for minimum splash time (2 seconds)
+      await Future.delayed(const Duration(seconds: 2));
+
+      // Mark as initialized
+      setState(() => _initialized = true);
+
+      // Show ad if available or navigate
+      _adManager.showAdIfAvailable();
+      _navigateToHome();
+    } catch (e) {
+      debugPrint('Initialization error: $e');
+      _navigateToHome();
+    }
+  }
+
+  void _navigateToHome() {
+    if (!mounted) return;
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => BottomNavigationScreen()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _adManager.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    Future.delayed(Duration(seconds: 3), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => BottomNavigationScreen()),
-      );
-    });
-
     return Scaffold(
       body: Center(
-        child: Text(
-          'AutoClipper',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Text('AutoClipper', style: TextStyle(fontSize: 24)),
+            SizedBox(height: 20),
+            CircularProgressIndicator(),
+          ],
         ),
       ),
     );
   }
 }
-
-
-
 
 
 

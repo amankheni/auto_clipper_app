@@ -1,16 +1,23 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_brace_in_string_interps, avoid_print, library_private_types_in_public_api, unnecessary_null_comparison
 
+import 'dart:io';
 import 'dart:ui';
 
 import 'package:auto_clipper_app/Constant/Colors.dart';
+import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
+import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
+
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:video_player/video_player.dart';
 
 class VideoDownloadScreen extends StatefulWidget {
-  const VideoDownloadScreen({super.key});
+  const VideoDownloadScreen({super.key, this.preserveStateKey});
+
+  final Key? preserveStateKey;
 
   @override
   _VideoDownloadScreenState createState() => _VideoDownloadScreenState();
@@ -65,6 +72,13 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
       final sessions = await _controller.loadVideoSessions();
       setState(() {
         _sessions = sessions;
+        // Preserve the selected session if it still exists
+        if (_selectedSession != null) {
+          _selectedSession = sessions.firstWhere(
+            (s) => s.sessionId == _selectedSession!.sessionId,
+            orElse: () => _selectedSession!,
+          );
+        }
       });
     } catch (e) {
       setState(() {
@@ -82,7 +96,7 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
       _statusMessage = 'Requesting permissions...';
     });
 
-    final message = await _controller.downloadToGallery(videoPath, context);
+    final message = await _controller.downloadToGallery(videoPath);
 
     setState(() {
       _statusMessage = message;
@@ -920,36 +934,51 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
                   ],
                 ),
                 SizedBox(height: 16.h),
-                _buildEnhancedActionButton(
-                  icon:
-                      _controller.isBulkDownloading &&
-                              _selectedSession == session
-                          ? SizedBox(
-                            width: 20.w,
-                            height: 20.w,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                Colors.white,
-                              ),
-                            ),
-                          )
-                          : Icon(
-                            Icons.download_rounded,
-                            size: 20.sp,
-                            color: Colors.white,
-                          ),
-                  label:
-                      _controller.isBulkDownloading &&
-                              _selectedSession == session
-                          ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
-                          : 'Download All Videos',
-                  onTap:
-                      _controller.isBulkDownloading
-                          ? null
-                          : () => _downloadAllVideosSimple(session),
-                  gradient: AppColors.primaryGradient,
+                  _buildEnhancedActionButton(
+          icon: _controller.isBulkDownloading &&
+                  _selectedSession == session
+              ? SizedBox(
+                width: 20.w,
+                height: 20.w,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Colors.white,
+                  ),
                 ),
+              )
+              : Icon(
+                Icons.download_rounded,
+                size: 20.sp,
+                color: Colors.white,
+              ),
+          label: _controller.isBulkDownloading &&
+                  _selectedSession == session
+              ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
+              : 'Download All Videos',
+          onTap: _controller.isBulkDownloading
+              ? null
+              : () async {
+                  // Show loading dialog
+                            showDialog(
+                              context: context,
+                              barrierDismissible: false,
+
+                              builder:
+                                  (context) => Center(
+                                    child: CircularProgressIndicator(),
+                                  ),
+                            );
+
+                            // Wait 1-2 seconds
+                            await Future.delayed(Duration(seconds: 1));
+                   InterstitialAdsController().handleButtonClick(context);
+                  // Then proceed with download
+                  _downloadAllVideosSimple(session);
+                },
+          gradient: AppColors.primaryGradient,
+        ),
+      
               ],
             ),
           ),
@@ -991,155 +1020,172 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   }
 
   Widget _buildEnhancedVideoItem(ProcessedVideo video) {
-    final isDownloading = _controller.downloadingVideos.contains(video.path);
-
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
       decoration: BoxDecoration(
         color: AppColors.cardBackground,
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: AppColors.borderLight, width: 1),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadowLight,
-            blurRadius: 15.r,
-            offset: Offset(0, 4.h),
-          ),
-        ],
       ),
-      child: Padding(
-        padding: EdgeInsets.all(20.r),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      child: Column(
+        children: [
+          // Video preview with thumbnail
+          GestureDetector(
+            onTap: () => _previewVideo(video.path),
+            child: Stack(
+              alignment: Alignment.center,
               children: [
                 Container(
-                  width: 60.w,
-                  height: 60.w,
+                  width: double.infinity,
+                  height: 200.h,
                   decoration: BoxDecoration(
-                    gradient: AppColors.secondaryGradient,
-                    borderRadius: BorderRadius.circular(16.r),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppColors.primaryBlue.withOpacity(0.3),
-                        blurRadius: 12.r,
-                        offset: Offset(0, 4.h),
-                      ),
-                    ],
+                    borderRadius: BorderRadius.vertical(
+                      top: Radius.circular(20.r),
+                    ),
+                    image:
+                        video.thumbnailPath != null
+                            ? DecorationImage(
+                              image: FileImage(File(video.thumbnailPath!)),
+                              fit: BoxFit.cover,
+                            )
+                            : null,
                   ),
+                  child:
+                      video.thumbnailPath == null
+                          ? Icon(
+                            Icons.videocam,
+                            size: 50.sp,
+                            color: Colors.white,
+                          )
+                          : null,
+                ),
+                Positioned(
                   child: Icon(
                     Icons.play_circle_filled,
-                    color: Colors.white,
-                    size: 32.sp,
-                  ),
-                ),
-                SizedBox(width: 16.w),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        video.name,
-                        style: TextStyle(
-                          fontSize: 16.sp,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textPrimary,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      SizedBox(height: 6.h),
-                      Row(
-                        children: [
-                          Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 8.w,
-                              vertical: 2.h,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.primaryCyan.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(6.r),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(
-                                  Icons.storage,
-                                  size: 12.sp,
-                                  color: AppColors.primaryCyan,
-                                ),
-                                SizedBox(width: 4.w),
-                                Text(
-                                  video.formattedSize,
-                                  style: TextStyle(
-                                    fontSize: 11.sp,
-                                    color: AppColors.primaryCyan,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
+                    size: 50.sp,
+                    color: Colors.white.withOpacity(0.8),
                   ),
                 ),
               ],
             ),
-            SizedBox(height: 20.h),
-            Row(
+          ),
+          // Video info and actions
+          Padding(
+            padding: EdgeInsets.all(16.r),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Expanded(
-                //   flex: 2,
-                //   child: _buildEnhancedActionButton(
-                //     icon:
-                //         isDownloading
-                //             ? SizedBox(
-                //               width: 18.w,
-                //               height: 18.w,
-                //               child: CircularProgressIndicator(
-                //                 strokeWidth: 2,
-                //                 valueColor: AlwaysStoppedAnimation<Color>(
-                //                   Colors.white,
-                //                 ),
-                //               ),
-                //             )
-                //             : Icon(
-                //               Icons.download_rounded,
-                //               size: 18.sp,
-                //               color: Colors.white,
-                //             ),
-                //     label: isDownloading ? 'Downloading...' : 'Download',
-                //     onTap:
-                //         isDownloading
-                //             ? null
-                //             : () => _downloadToGallery(video.path),
-                //     gradient: AppColors.primaryGradient,
-                //   ),
-                // ),
-                SizedBox(width: 12.w),
-                Expanded(
-                  child: _buildEnhancedActionButton(
-                    icon: Icon(
-                      Icons.share_rounded,
-                      size: 18.sp,
-                      color: Colors.white,
-                    ),
-                    label: 'Share',
-                    onTap: () => _shareVideo(video.path),
-                    gradient: AppColors.accentGradient,
+                Text(
+                  video.name,
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.bold,
                   ),
+                ),
+                SizedBox(height: 8.h),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      video.formattedSize,
+                      style: TextStyle(fontSize: 12.sp),
+                    ),
+                    Text(
+                      '${video.durationInSeconds}s',
+                      style: TextStyle(fontSize: 12.sp),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16.h),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildActionButton(
+                        icon: Icons.download,
+                        label: 'Download',
+                        onPressed: () => _downloadToGallery(video.path),
+                      ),
+                    ),
+                    SizedBox(width: 8.w),
+                    Expanded(
+                      child: _buildActionButton(
+                        icon: Icons.share,
+                        label: 'Share',
+                        onPressed: () => _shareVideo(video.path),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
+Widget _buildActionButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback onPressed,
+  }) {
+    return Expanded(
+      child: Container(
+        height: 48.h,
+        decoration: BoxDecoration(
+          gradient: AppColors.primaryGradient,
+          borderRadius: BorderRadius.circular(14.r),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: () async {
+              // Show loading dialog
+              showDialog(
+                context: context,
+                barrierDismissible: false,
+
+                builder:
+                    (context) => Center(child: CircularProgressIndicator()),
+              );
+
+              // Wait 1-2 seconds
+              await Future.delayed(Duration(seconds: 1));
+
+              // Show interstitial ad
+             InterstitialAdsController().handleButtonClick(context);
+
+              // Dismiss loader
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+              }
+
+              // Execute original onPressed
+              onPressed();
+            },
+            borderRadius: BorderRadius.circular(14.r),
+            child: Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16.w),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 20.sp, color: Colors.white),
+                  SizedBox(width: 8.w),
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 14.sp,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
   Widget _buildEnhancedActionButton({
     required Widget icon,
     required String label,
@@ -1375,39 +1421,202 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
     );
   }
 
+  Widget _buildVideoThumbnail(ProcessedVideo video) {
+    return GestureDetector(
+      onTap: () => _previewVideo(video.path),
+      child: Container(
+        width: 60.w,
+        height: 60.w,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12.r),
+          gradient: AppColors.secondaryGradient,
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.primaryBlue.withOpacity(0.3),
+              blurRadius: 12.r,
+              offset: Offset(0, 4.h),
+            ),
+          ],
+          image:
+              video.thumbnailPath != null
+                  ? DecorationImage(
+                    image: FileImage(File(video.thumbnailPath!)),
+                    fit: BoxFit.cover,
+                  )
+                  : null,
+        ),
+        child:
+            video.thumbnailPath == null
+                ? Icon(
+                  Icons.play_circle_filled,
+                  color: Colors.white,
+                  size: 24.sp,
+                )
+                : Center(
+                  child: Icon(
+                    Icons.play_circle_outline,
+                    color: Colors.white.withOpacity(0.8),
+                    size: 24.sp,
+                  ),
+                ),
+      ),
+    );
+  }
+
+  void _previewVideo(String path) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (context) => Scaffold(
+              appBar: AppBar(
+                title: Text('Video Preview'),
+                actions: [
+                  IconButton(
+                    icon: Icon(Icons.download),
+                    onPressed: () => _downloadToGallery(path),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.share),
+                    onPressed: () => _shareVideo(path),
+                  ),
+                ],
+              ),
+              body: Center(child: VideoPlayerWidget(videoPath: path)),
+            ),
+      ),
+    );
+  }
+
+
+
+
+@override
+  Widget build(BuildContext context) {
+  return Scaffold(
+    backgroundColor: AppColors.backgroundColor,
+    body: SafeArea(
+      child: Column(
+        children: [
+          _buildGradientAppBar(),
+          Expanded(
+            child: SingleChildScrollView(
+              child: Column(
+                children: [
+                  _buildEnhancedStorageInfo(),
+                  _buildEnhancedStatusMessage(),
+                  
+                  // Native Ad with proper error handling
+                  const NativeAdWidget(
+                    height: 300,
+                    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  ),
+                  
+                  if (_isLoading)
+                    SizedBox(
+                      height: 300.h,
+                      child: _buildEnhancedLoadingState(),
+                    )
+                  else if (_sessions.isEmpty)
+                    SizedBox(
+                      height: 400.h,
+                      child: _buildEnhancedEmptyState(),
+                    )
+                  else
+                    _buildVideosList(),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+}
+
+class VideoPlayerWidget extends StatefulWidget {
+  final String videoPath;
+
+  const VideoPlayerWidget({required this.videoPath});
+
+  @override
+  _VideoPlayerWidgetState createState() => _VideoPlayerWidgetState();
+}
+
+class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
+  late VideoPlayerController _controller;
+  bool _isPlaying = false;
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = VideoPlayerController.file(File(widget.videoPath))
+      ..initialize().then((_) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = true;
+          });
+          _controller.play();
+          _isPlaying = true;
+        }
+      });
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
-      body: SafeArea(
-        child: Column(
+    if (!_isInitialized) {
+      return Center(child: CircularProgressIndicator());
+    }
+
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        AspectRatio(
+          aspectRatio: _controller.value.aspectRatio,
+          child: VideoPlayer(_controller),
+        ),
+        VideoProgressIndicator(
+          _controller,
+          allowScrubbing: true,
+          colors: VideoProgressColors(
+            playedColor: AppColors.primaryBlue,
+            bufferedColor: AppColors.primaryBlue.withOpacity(0.3),
+          ),
+        ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            _buildGradientAppBar(), // Fixed app bar
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildEnhancedStorageInfo(),
-                    _buildEnhancedStatusMessage(),
-                    SizedBox(height: 10.sp),
-                    _isLoading
-                        ? SizedBox(
-                          height: 300.h, // Give loading state a fixed height
-                          child: _buildEnhancedLoadingState(),
-                        )
-                        : _sessions.isEmpty
-                        ? SizedBox(
-                          height: 400.h, // Give empty state a fixed height
-                          child: _buildEnhancedEmptyState(),
-                        )
-                        : _buildVideosList(),
-                  ],
-                ),
+            IconButton(
+              icon: Icon(
+                _isPlaying ? Icons.pause : Icons.play_arrow,
+                size: 32.sp,
               ),
+              onPressed: () {
+                setState(() {
+                  _isPlaying ? _controller.pause() : _controller.play();
+                  _isPlaying = !_isPlaying;
+                });
+              },
+            ),
+            IconButton(
+              icon: Icon(Icons.replay, size: 32.sp),
+              onPressed: () {
+                _controller.seekTo(Duration.zero);
+                _controller.play();
+                setState(() => _isPlaying = true);
+              },
             ),
           ],
         ),
-      ),
+      ],
     );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
   }
 }

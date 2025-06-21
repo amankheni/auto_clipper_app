@@ -3,14 +3,20 @@
 import 'dart:async';
 
 import 'package:auto_clipper_app/Screens/splesh_screen.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 
 void main() async {
   // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
+   await Firebase.initializeApp();
+    MobileAds.instance.initialize();
+
+    
 
   // Handle Flutter errors
   FlutterError.onError = (FlutterErrorDetails details) {
@@ -400,3 +406,4 @@ class _OptimizedImageState extends State<OptimizedImage> {
     );
   }
 }
+

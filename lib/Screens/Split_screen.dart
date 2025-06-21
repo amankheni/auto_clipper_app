@@ -1,18 +1,19 @@
 // video_splitter_screen.dart
 // ignore_for_file: avoid_print, depend_on_referenced_packages, deprecated_member_use
 
+import 'dart:io';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:auto_clipper_app/Constant/Colors.dart';
+import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
 import 'package:auto_clipper_app/Logic/Split_Controller.dart';
 import 'package:auto_clipper_app/Screens/video_download_screen.dart';
-import 'package:auto_clipper_app/widget/Custom_Slider_ThumbShape.dart';
+import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:path/path.dart' as path;
 import 'package:video_thumbnail/video_thumbnail.dart';
-import 'package:percent_indicator/percent_indicator.dart';
-import 'package:shimmer/shimmer.dart';
 
 class VideoSplitterScreen extends StatefulWidget {
   const VideoSplitterScreen({super.key});
@@ -43,14 +44,13 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
   WatermarkPosition _watermarkPosition = WatermarkPosition.topRight;
   double _watermarkOpacity = 0.7;
   Uint8List? _videoThumbnail;
-  bool _isPortraitMode = false;
-  bool _useTextOverlay = false;
+  final bool _isPortraitMode = false;
+  final bool _useTextOverlay = false;
   final TextEditingController _textController = TextEditingController();
-  String _textPrefix = 'Part';
-  TextPosition _textPosition = TextPosition.topCenter;
-  double _textOpacity = 1.0;
-  Color _textColor = Colors.white;
-  double _fontSize = 24.0;
+  final String _textPrefix = 'Part';
+  final TextPosition _textPosition = TextPosition.topCenter;
+  final Color _textColor = Colors.white;
+  final double _fontSize = 24.0;
 
   @override
   void initState() {
@@ -149,7 +149,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     }
   }
 
- // Update your startSplitting method to call the success dialog
+  // Update your startSplitting method to call the success dialog
   Future<void> _startSplitting() async {
     if (_selectedVideoPath == null) {
       _showError('Please select a video first');
@@ -209,6 +209,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
       _showError('Error splitting video: $e');
     }
   }
+
   void _showError(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -251,14 +252,16 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       _buildVideoSelection(),
+
                       SizedBox(height: 24.h),
                       _buildDurationInput(),
-                      SizedBox(height: 24.h),
+                      const NativeAdWidget(
+                        height: 300,
+                        margin: EdgeInsets.all(16),
+                      ),
+                      SizedBox(height: 10.h),
                       _buildWatermarkSection(),
-                      // SizedBox(height: 24.h),
-                      // _buildTextOverlaySection(),
-                      SizedBox(height: 32.h),
-
+                      SizedBox(height: 10.h),
                       _buildNavigationSection(),
                       SizedBox(height: 24.h),
                       if (_isProcessing) _buildProgressSection(),
@@ -379,174 +382,279 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
             padding: EdgeInsets.all(24.r),
             child: Column(
               children: [
-                // Thumbnail or default icon
-                if (_videoThumbnail != null) ...[
-                  Container(
-                    width: 200.w,
-                    height: 120.h,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(color: Colors.white, width: 2),
+                // Thumbnail Container
+                Container(
+                  width: double.infinity,
+                  constraints: BoxConstraints(
+                    maxWidth: 300.w,
+                    maxHeight: 180.h,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(
+                      color:
+                          _selectedVideoPath != null
+                              ? Colors.white
+                              : Colors.grey.shade300,
+                      width: 2,
                     ),
-                    child: Stack(
-                      children: [
+                  ),
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      // Video Thumbnail or Placeholder
+                      if (_videoThumbnail != null)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10.r),
-                          child: Image.memory(
-                            _videoThumbnail!,
-                            width: 200.w,
-                            height: 120.h,
-                            fit: BoxFit.cover,
+                          child: Stack(
+                            children: [
+                              Image.memory(
+                                _videoThumbnail!,
+                                width: double.infinity,
+                                height: double.infinity,
+                                fit: BoxFit.cover,
+                              ),
+                              // Video Indicator
+                              Positioned(
+                                bottom: 8.h,
+                                left: 8.w,
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 8.w,
+                                    vertical: 4.h,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.7),
+                                    borderRadius: BorderRadius.circular(12.r),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.videocam,
+                                        color: Colors.white,
+                                        size: 12.sp,
+                                      ),
+                                      SizedBox(width: 4.w),
+                                      Text(
+                                        'Video',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10.sp,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        Container(
+                          color: Colors.grey.shade100,
+                          child: Center(
+                            child: Icon(
+                              Icons.video_file,
+                              size: 40.sp,
+                              color: Colors.grey.shade400,
+                            ),
                           ),
                         ),
-                        // Watermark preview overlay
-                        if (_useWatermark && _selectedWatermarkPath != null)
-                          Positioned(
-                            top: _getWatermarkPreviewPosition().dy,
-                            left: _getWatermarkPreviewPosition().dx,
-                            child: Container(
-                              width: 30.w,
-                              height: 30.w,
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(
-                                  _watermarkOpacity,
-                                ),
-                                borderRadius: BorderRadius.circular(4.r),
-                              ),
-                              child: Icon(
-                                Icons.image,
-                                size: 16.sp,
-                                color: Colors.grey,
-                              ),
-                            ),
-                          ),
-                        // Text overlay preview
-                        if (_useTextOverlay)
-                          Positioned(
-                            top: _getTextPreviewPosition().dy,
-                            left: _getTextPreviewPosition().dx,
-                            child: Container(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: 6.w,
-                                vertical: 2.h,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withOpacity(0.5),
-                                borderRadius: BorderRadius.circular(4.r),
-                              ),
-                              child: Text(
-                                '${_textPrefix} 1',
-                                style: TextStyle(
-                                  color: _textColor,
-                                  fontSize: 10.sp,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        // Portrait/Landscape mode indicator
+
+                      // Watermark Preview
+                      if (_useWatermark && _selectedWatermarkPath != null)
                         Positioned(
-                          bottom: 8.h,
-                          right: 8.w,
+                          top: _getWatermarkPreviewPosition().dy,
+                          left: _getWatermarkPreviewPosition().dx,
+                          child: Stack(
+                            children: [
+                              Container(
+                                width: 50.w,
+                                height: 50.w,
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8.r),
+                                  image: DecorationImage(
+                                    image: FileImage(
+                                      File(_selectedWatermarkPath!),
+                                    ),
+                                    opacity: _watermarkOpacity,
+                                    fit: BoxFit.contain,
+                                  ),
+                                  border: Border.all(
+                                    color: Colors.white,
+                                    width: 1.5,
+                                  ),
+                                ),
+                              ),
+                              // Watermark Indicator
+                              Positioned(
+                                bottom: 4.h,
+                                right: 4.w,
+                                child: Container(
+                                  padding: EdgeInsets.symmetric(
+                                    horizontal: 6.w,
+                                    vertical: 2.h,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.primaryPink.withOpacity(
+                                      0.9,
+                                    ),
+                                    borderRadius: BorderRadius.circular(8.r),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(
+                                        Icons.image,
+                                        color: Colors.white,
+                                        size: 10.sp,
+                                      ),
+                                      SizedBox(width: 2.w),
+                                      Text(
+                                        'WM',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 8.sp,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      // Text Overlay Preview
+                      if (_useTextOverlay && _textPrefix.isNotEmpty)
+                        Positioned(
+                          top: _getTextPreviewPosition().dy,
+                          left: _getTextPreviewPosition().dx,
                           child: Container(
                             padding: EdgeInsets.symmetric(
                               horizontal: 8.w,
                               vertical: 4.h,
                             ),
                             decoration: BoxDecoration(
-                              color:
-                                  _isPortraitMode
-                                      ? AppColors.primaryPink
-                                      : AppColors.primaryBlue,
-                              borderRadius: BorderRadius.circular(12.r),
+                              color: Colors.black.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(6.r),
                             ),
                             child: Text(
-                              _isPortraitMode ? 'Portrait' : 'Landscape',
+                              '${_textPrefix} 1',
                               style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10.sp,
+                                color: _textColor,
+                                fontSize: _fontSize.sp,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
                           ),
                         ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(height: 16.h),
-                  // Orientation toggle buttons
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _buildOrientationButton(
-                        icon: Icons.stay_current_portrait,
-                        label: 'Portrait',
-                        isSelected: _isPortraitMode,
-                        onTap: () => setState(() => _isPortraitMode = true),
-                      ),
-                      SizedBox(width: 12.w),
-                      _buildOrientationButton(
-                        icon: Icons.stay_current_landscape,
-                        label: 'Landscape',
-                        isSelected: !_isPortraitMode,
-                        onTap: () => setState(() => _isPortraitMode = false),
+
+                      // Orientation Indicator
+                      Positioned(
+                        bottom: 8.h,
+                        right: 8.w,
+                        child: Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 12.w,
+                            vertical: 6.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color:
+                                _isPortraitMode
+                                    ? AppColors.primaryPink
+                                    : AppColors.primaryBlue,
+                            borderRadius: BorderRadius.circular(12.r),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                _isPortraitMode
+                                    ? Icons.stay_current_portrait
+                                    : Icons.stay_current_landscape,
+                                size: 12.sp,
+                                color: Colors.white,
+                              ),
+                              SizedBox(width: 4.w),
+                              Text(
+                                _isPortraitMode ? 'Portrait' : 'Landscape',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10.sp,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ] else ...[
-                  Container(
-                    width: 80.w,
-                    height: 80.w,
-                    decoration: BoxDecoration(
-                      color: AppColors.primaryGradient.colors.first.withOpacity(
-                        0.1,
-                      ),
-                      borderRadius: BorderRadius.circular(40.r),
-                    ),
-                    child: Icon(
-                      Icons.video_file,
-                      size: 40.sp,
-                      color: AppColors.primaryGradient.colors.first,
-                    ),
-                  ),
-                ],
-                SizedBox(height: 16.h),
-                Text(
-                  _selectedVideoPath == null
-                      ? 'Select Video File'
-                      : 'Video Selected',
-                  style: TextStyle(
-                    fontSize: 18.sp,
-                    fontWeight: FontWeight.bold,
-                    color:
-                        _selectedVideoPath != null
-                            ? Colors.white
-                            : AppColors.textPrimary,
-                  ),
                 ),
-                if (_selectedVideoPath != null) ...[
-                  SizedBox(height: 8.h),
-                  Text(
-                    path.basename(_selectedVideoPath!),
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.white.withOpacity(0.8),
+                SizedBox(height: 16.h),
+
+                // Video Info Section
+                Column(
+                  children: [
+                    Text(
+                      _selectedVideoPath == null
+                          ? 'Select Video File'
+                          : 'Video Selected',
+                      style: TextStyle(
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.bold,
+                        color:
+                            _selectedVideoPath != null
+                                ? Colors.white
+                                : AppColors.textPrimary,
+                      ),
                     ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ] else ...[
-                  SizedBox(height: 8.h),
-                  Text(
-                    'Tap to browse and select your video',
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
+                    SizedBox(height: 8.h),
+                    if (_selectedVideoPath != null)
+                      Column(
+                        children: [
+                          Text(
+                            path.basename(_selectedVideoPath!),
+                            style: TextStyle(
+                              fontSize: 14.sp,
+                              color:
+                                  _selectedVideoPath != null
+                                      ? Colors.white.withOpacity(0.9)
+                                      : AppColors.textSecondary,
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          SizedBox(height: 4.h),
+                          Text(
+                            _formatFileSize(
+                              File(_selectedVideoPath!).lengthSync(),
+                            ),
+                            style: TextStyle(
+                              fontSize: 12.sp,
+                              color:
+                                  _selectedVideoPath != null
+                                      ? Colors.white.withOpacity(0.7)
+                                      : AppColors.textTertiary,
+                            ),
+                          ),
+                        ],
+                      )
+                    else
+                      Text(
+                        'Tap to browse and select your video',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: AppColors.textSecondary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                  ],
+                ),
               ],
             ),
           ),
@@ -555,16 +663,24 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
+  // Helper method to format file size
+  String _formatFileSize(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB"];
+    var i = (log(bytes) / log(1024)).floor();
+    return '${(bytes / pow(1024, i)).toStringAsFixed(i > 0 ? 1 : 0)} ${suffixes[i]}';
+  }
+
   Offset _getWatermarkPreviewPosition() {
     switch (_watermarkPosition) {
       case WatermarkPosition.topLeft:
         return Offset(8.w, 8.h);
       case WatermarkPosition.topRight:
-        return Offset(160.w, 8.h);
+        return Offset(150.w, 8.h); // Adjusted for 40x40 watermark
       case WatermarkPosition.bottomLeft:
-        return Offset(8.w, 80.h);
+        return Offset(8.w, 70.h); // Adjusted for 40x40 watermark
       case WatermarkPosition.bottomRight:
-        return Offset(160.w, 80.h);
+        return Offset(150.w, 70.h); // Adjusted for 40x40 watermark
     }
   }
 
@@ -584,45 +700,6 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
         return Offset(140.w, 90.h);
     }
   }
-
-  Widget _buildOrientationButton({
-    required IconData icon,
-    required String label,
-    required bool isSelected,
-    required VoidCallback onTap,
-  }) {
-    return GestureDetector(
-      onTap: _isProcessing ? null : onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-        decoration: BoxDecoration(
-          gradient: isSelected ? AppColors.primaryGradient : null,
-          color: isSelected ? null : Colors.white.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(20.r),
-          border: Border.all(
-            color:
-                isSelected ? Colors.transparent : Colors.white.withOpacity(0.5),
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, color: Colors.white, size: 16.sp),
-            SizedBox(width: 6.w),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12.sp,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
 
   Widget _buildDurationInput() {
     return Container(
@@ -948,7 +1025,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                                       children: [
                                         AnimatedContainer(
                                           duration: Duration(milliseconds: 300),
-                                          padding: EdgeInsets.all(12.r),
+                                          padding: EdgeInsets.all(10.r),
                                           decoration: BoxDecoration(
                                             color:
                                                 _selectedWatermarkPath != null
@@ -1032,7 +1109,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
                             // Opacity Section with Progress Bar
                             Container(
-                              padding: EdgeInsets.all(24.r),
+                              padding: EdgeInsets.all(13.r),
                               decoration: BoxDecoration(
                                 gradient: LinearGradient(
                                   begin: Alignment.topLeft,
@@ -1048,150 +1125,178 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Row(
-                                        children: [
-                                          Icon(
-                                            Icons.opacity_rounded,
-                                            color: AppColors.primaryPink,
-                                            size: 20.sp,
-                                          ),
-                                          SizedBox(width: 8.w),
-                                          Text(
-                                            'Opacity',
-                                            style: TextStyle(
-                                              fontSize: 16.sp,
-                                              fontWeight: FontWeight.w600,
-                                              color: AppColors.textPrimary,
-                                            ),
-                                          ),
-                                        ],
+                                  // Header with label and value
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 8.h,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(8.r),
+                                      border: Border.all(
+                                        color: Colors.grey.shade200,
+                                        width: 1,
                                       ),
-                                      Container(
-                                        padding: EdgeInsets.symmetric(
-                                          horizontal: 16.w,
-                                          vertical: 8.h,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          gradient: LinearGradient(
-                                            colors: [
-                                              AppColors.primaryPink,
-                                              AppColors.primaryPink.withOpacity(
-                                                0.8,
+                                    ),
+                                    child: Row(
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              Icons.opacity,
+                                              size: 18.sp,
+                                              color: AppColors.textSecondary,
+                                            ),
+                                            SizedBox(width: 8.w),
+                                            Text(
+                                              'Watermark Opacity',
+                                              style: TextStyle(
+                                                fontSize: 16.sp,
+                                                fontWeight: FontWeight.w600,
+                                                color: AppColors.textPrimary,
                                               ),
-                                            ],
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            20.r,
-                                          ),
-                                          boxShadow: [
-                                            BoxShadow(
-                                              color: AppColors.primaryPink
-                                                  .withOpacity(0.3),
-                                              blurRadius: 8.r,
-                                              offset: Offset(0, 4.h),
                                             ),
                                           ],
                                         ),
-                                        child: Text(
-                                          '${(_watermarkOpacity * 100).round()}%',
-                                          style: TextStyle(
-                                            fontSize: 14.sp,
-                                            fontWeight: FontWeight.bold,
-                                            color: Colors.white,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
+                                        // Container(
+                                        //   padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+                                        //   decoration: BoxDecoration(
+                                        //     color: AppColors.primaryPink.withOpacity(0.1),
+                                        //     borderRadius: BorderRadius.circular(20.r),
+                                        //     border: Border.all(
+                                        //       color: AppColors.primaryPink.withOpacity(0.3),
+                                        //       width: 1,
+                                        //     ),
+                                        //   ),
+                                        //   child: Text(
+                                        //     '${(_watermarkOpacity * 100).round()}%',
+                                        //     style: TextStyle(
+                                        //       fontSize: 14.sp,
+                                        //       fontWeight: FontWeight.bold,
+                                        //       color: AppColors.primaryPink,
+                                        //     ),
+                                        //   ),
+                                        // ),
+                                      ],
+                                    ),
                                   ),
+
                                   SizedBox(height: 20.h),
 
-                                  // Custom Progress Bar with Percent Indicator
-                                  LinearPercentIndicator(
-                                    width: 170.sp,
-                                    // MediaQuery.of(context).size.width -
-                                    // 120.w,
-                                    animation: true,
-                                    animationDuration: 300,
-                                    lineHeight: 12.h,
-                                    percent: _watermarkOpacity,
-                                    center: Container(),
-                                    linearStrokeCap: LinearStrokeCap.roundAll,
-                                    progressColor: AppColors.primaryPink,
-                                    backgroundColor: Colors.grey.shade200,
-                                    barRadius: Radius.circular(6.r),
-                                    leading: Container(
-                                      padding: EdgeInsets.all(6.r),
-                                      decoration: BoxDecoration(
+                                  // Enhanced Slider Container
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 20.h,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white,
+                                      borderRadius: BorderRadius.circular(12.r),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.05),
+                                          blurRadius: 10,
+                                          offset: Offset(0, 2),
+                                        ),
+                                      ],
+                                      border: Border.all(
                                         color: Colors.grey.shade200,
-                                        borderRadius: BorderRadius.circular(
-                                          6.r,
-                                        ),
-                                      ),
-                                      child: Text(
-                                        '',
-                                        style: TextStyle(
-                                          fontSize: 1.sp,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.white,
-                                        ),
+                                        width: 1,
                                       ),
                                     ),
-                                    trailing: Container(
-                                      padding: EdgeInsets.all(6.r),
-                                      decoration: BoxDecoration(
-                                        color: AppColors.primaryPink
-                                            .withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(
-                                          6.r,
+                                    child: Column(
+                                      children: [
+                                        // Slider with enhanced styling
+                                        SliderTheme(
+                                          data: SliderTheme.of(
+                                            context,
+                                          ).copyWith(
+                                            trackHeight: 6.h,
+
+                                            activeTrackColor:
+                                                AppColors.primaryPink,
+                                            inactiveTrackColor:
+                                                Colors.grey.shade300,
+                                            thumbShape: CustomSliderThumbShape(
+                                              enabledThumbRadius: 12.r,
+                                              elevation: 4,
+                                            ),
+                                            overlayShape:
+                                                RoundSliderOverlayShape(
+                                                  overlayRadius: 20.r,
+                                                ),
+                                            thumbColor: Colors.white,
+                                            overlayColor: AppColors.primaryPink
+                                                .withOpacity(0.15),
+                                            valueIndicatorShape:
+                                                PaddleSliderValueIndicatorShape(),
+                                            valueIndicatorColor:
+                                                AppColors.primaryPink,
+                                            valueIndicatorTextStyle: TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 12.sp,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                            showValueIndicator:
+                                                ShowValueIndicator
+                                                    .onlyForDiscrete,
+                                          ),
+                                          child: Slider(
+                                            value: _watermarkOpacity,
+                                            min: 0.0,
+                                            max: 1.0,
+                                            divisions: 20,
+                                            label:
+                                                '${(_watermarkOpacity * 100).round()}%',
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _watermarkOpacity = value;
+                                              });
+                                            },
+                                          ),
                                         ),
-                                      ),
-                                      child: Text(
-                                        '100%',
-                                        style: TextStyle(
-                                          fontSize: 10.sp,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppColors.primaryPink,
-                                        ),
-                                      ),
+                                      ],
                                     ),
                                   ),
 
                                   SizedBox(height: 16.h),
 
-                                  // Custom Slider
-                                  SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 4.h,
-                                      thumbShape: CustomSliderThumbShape(
-                                        enabledThumbRadius: 12.r,
-                                        elevation: 4,
-                                      ),
-                                      overlayShape: RoundSliderOverlayShape(
-                                        overlayRadius: 20.r,
-                                      ),
-                                      activeTrackColor: AppColors.primaryPink,
-                                      //   inactiveTrackColor: Colors.grey.shade300,
-                                      thumbColor: Colors.white,
-                                      overlayColor: AppColors.primaryPink
-                                          .withOpacity(0.2),
+                                  // Quick preset buttons
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 16.w,
+                                      vertical: 12.h,
                                     ),
-                                    child: Slider(
-                                      value: _watermarkOpacity,
-                                      min: 0.1,
-                                      max: 1.0,
-                                      divisions: 9,
-                                      onChanged:
-                                          _isProcessing
-                                              ? null
-                                              : (value) {
-                                                setState(() {
-                                                  _watermarkOpacity = value;
-                                                });
-                                              },
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey.shade50,
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          'Quick Presets',
+                                          style: TextStyle(
+                                            fontSize: 12.sp,
+                                            fontWeight: FontWeight.w600,
+                                            color: AppColors.textSecondary,
+                                          ),
+                                        ),
+                                        SizedBox(height: 8.h),
+                                        Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceEvenly,
+                                          children: [
+                                            _buildPresetButton('Light', 0.3),
+                                            _buildPresetButton('Medium', 0.5),
+                                            _buildPresetButton('Strong', 0.8),
+                                          ],
+                                        ),
+                                      ],
                                     ),
                                   ),
                                 ],
@@ -1247,11 +1352,11 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                                         horizontal: 20.w,
                                         vertical: 16.h,
                                       ),
-                                      suffixIcon: Icon(
-                                        Icons.keyboard_arrow_down_rounded,
-                                        color: AppColors.primaryPink,
-                                        size: 24.sp,
-                                      ),
+                                      // suffixIcon: Icon(
+                                      //   Icons.keyboard_arrow_down_rounded,
+                                      //   color: AppColors.primaryPink,
+                                      //   size: 24.sp,
+                                      // ),
                                     ),
                                     dropdownColor: Colors.white,
                                     style: TextStyle(
@@ -1324,7 +1429,43 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
- Widget _buildSplitButton() {
+  // Helper method for scale markers
+
+  // Helper method for preset buttons
+  Widget _buildPresetButton(String label, double value) {
+    bool isSelected = (_watermarkOpacity - value).abs() < 0.05;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _watermarkOpacity = value;
+        });
+      },
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+        decoration: BoxDecoration(
+          color: isSelected ? AppColors.primaryPink : Colors.white,
+          borderRadius: BorderRadius.circular(20.r),
+          border: Border.all(
+            color: isSelected ? AppColors.primaryPink : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.sp,
+            fontWeight: FontWeight.w500,
+            color: isSelected ? Colors.white : AppColors.textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Custom thumb shape class
+
+Widget _buildSplitButton() {
     return Container(
       height: 60.h,
       decoration: BoxDecoration(
@@ -1347,7 +1488,17 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onTap: _isProcessing ? null : _startSplitting,
+          onTap:
+              _isProcessing
+                  ? null
+                  : () async {
+                    // Show interstitial ad when button is pressed
+                    InterstitialAdsController().handleButtonClick(
+                      context,
+                    );
+                    // Then proceed with the splitting
+                    _startSplitting();
+                  },
           borderRadius: BorderRadius.circular(30.r),
           child: Center(
             child: Row(
@@ -1385,7 +1536,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
   }
 
- Widget _buildNavigationSection() {
+  Widget _buildNavigationSection() {
     return Container(
       padding: EdgeInsets.all(16.r),
       child: _buildSplitButton(), // Only split button now
@@ -1393,7 +1544,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
   }
 
   // Enhanced Progress Section
- Widget _buildProgressSection() {
+  Widget _buildProgressSection() {
     return Container(
       padding: EdgeInsets.all(24.r),
       margin: EdgeInsets.symmetric(horizontal: 4.r),
@@ -1821,7 +1972,12 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
-                                  builder: (context) => VideoDownloadScreen(),
+                                  builder:
+                                      (context) => VideoDownloadScreen(
+                                        preserveStateKey: ValueKey(
+                                          'video_download_screen',
+                                        ),
+                                      ),
                                 ),
                               );
                             },
@@ -1905,7 +2061,63 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
   }
 }
 
+class CustomSliderThumbShape extends SliderComponentShape {
+  final double enabledThumbRadius;
+  final double elevation;
 
+  const CustomSliderThumbShape({
+    this.enabledThumbRadius = 10.0,
+    this.elevation = 1.0,
+  });
+
+  @override
+  Size getPreferredSize(bool isEnabled, bool isDiscrete) {
+    return Size.fromRadius(enabledThumbRadius);
+  }
+
+  @override
+  void paint(
+    PaintingContext context,
+    Offset center, {
+    required Animation<double> activationAnimation,
+    required Animation<double> enableAnimation,
+    required bool isDiscrete,
+    required TextPainter labelPainter,
+    required RenderBox parentBox,
+    required SliderThemeData sliderTheme,
+    required TextDirection textDirection,
+    required double value,
+    required double textScaleFactor,
+    required Size sizeWithOverflow,
+  }) {
+    final Canvas canvas = context.canvas;
+
+    // Draw shadow
+    final Paint shadowPaint =
+        Paint()
+          ..color = Colors.black.withOpacity(0.2)
+          ..maskFilter = MaskFilter.blur(BlurStyle.normal, elevation);
+
+    canvas.drawCircle(center + Offset(0, 1), enabledThumbRadius, shadowPaint);
+
+    // Draw main circle
+    final Paint paint =
+        Paint()
+          ..color = sliderTheme.thumbColor ?? Colors.white
+          ..style = PaintingStyle.fill;
+
+    canvas.drawCircle(center, enabledThumbRadius, paint);
+
+    // Draw border
+    final Paint borderPaint =
+        Paint()
+          ..color = sliderTheme.activeTrackColor ?? Colors.blue
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.0;
+
+    canvas.drawCircle(center, enabledThumbRadius - 1, borderPaint);
+  }
+}
 
 
 
