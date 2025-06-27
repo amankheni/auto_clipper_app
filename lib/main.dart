@@ -1,8 +1,11 @@
-// Updated main.dart with error handling and performance fixes
+// Optimized main.dart with proper error handling and ads initialization
 
 import 'dart:async';
-
+// import 'package:auto_clipper_app/Screens/splesh_screen.dart';
+// import 'package:auto_clipper_app/Logic/remote_config_service.dart';
+// import 'package:auto_clipper_app/Logic/app_lifecycle_manager.dart';
 import 'package:auto_clipper_app/Screens/splesh_screen.dart';
+import 'package:auto_clipper_app/widget/applife_cycle.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,14 +13,37 @@ import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 
+// Import your ads controller
+// import 'package:auto_clipper_app/controllers/native_ads_controller.dart';
+
 void main() async {
-  // Ensure Flutter binding is initialized
   WidgetsFlutterBinding.ensureInitialized();
-   await Firebase.initializeApp();
-    MobileAds.instance.initialize();
 
-    
+  // Initialize Firebase
+  await Firebase.initializeApp();
 
+  // Initialize Mobile Ads
+  await MobileAds.instance.initialize();
+
+  // Set up error handling
+  _setupErrorHandling();
+
+  // Set preferred orientations
+  await SystemChrome.setPreferredOrientations([
+    DeviceOrientation.portraitUp,
+    DeviceOrientation.portraitDown,
+  ]);
+
+  // Run the app with error zone
+  runZonedGuarded(() => runApp(MyApp()), (error, stack) {
+    if (kDebugMode) {
+      print('Zone Error: $error');
+      print('Stack trace: $stack');
+    }
+  });
+}
+
+void _setupErrorHandling() {
   // Handle Flutter errors
   FlutterError.onError = (FlutterErrorDetails details) {
     FlutterError.presentError(details);
@@ -35,69 +61,110 @@ void main() async {
     }
     return true;
   };
-
-  // Set preferred orientations (optional)
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
-
-  // Run the app with error zone
-  runZonedGuarded(
-    () {
-      runApp(MyApp());
-    },
-    (error, stack) {
-      if (kDebugMode) {
-        print('Zone Error: $error');
-        print('Stack trace: $stack');
-      }
-    },
-  );
 }
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  // final AppLifecycleManager _appLifecycleManager = AppLifecycleManager();
+  // final RemoteConfigService _remoteConfigService = RemoteConfigService();
+  bool _isInitialized = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
+  }
+
+  Future<void> _initializeApp() async {
+    try {
+      if (kDebugMode) {
+        print('Starting app initialization...');
+      }
+
+      // Initialize Remote Config Service
+    //  await _remoteConfigService.initialize();
+      if (kDebugMode) {
+        print('Remote Config initialized');
+      }
+
+      // Initialize App Lifecycle Manager for Open App Ads
+      // _appLifecycleManager.initialize();
+      if (kDebugMode) {
+        print('App Lifecycle Manager initialized');
+      }
+
+      // Pre-initialize other ads
+      await _preInitializeAds();
+
+      setState(() {
+        _isInitialized = true;
+      });
+
+      if (kDebugMode) {
+        print('App initialization completed successfully');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error during app initialization: $e');
+      }
+      // Even if initialization fails, allow the app to continue
+      setState(() {
+        _isInitialized = true;
+      });
+    }
+  }
+
+  Future<void> _preInitializeAds() async {
+    try {
+      // Pre-initialize ads controller
+      // Uncomment when you have the NativeAdsController
+      // final adsController = NativeAdsController();
+      // await adsController.initializeAds();
+
+      // Pre-load a native ad with delay
+      // await Future.delayed(const Duration(milliseconds: 1000));
+      // await adsController.loadNativeAd();
+
+      // Preload an open app ad for future use
+     // _appLifecycleManager.preloadAd();
+
+      if (kDebugMode) {
+        print('Ads pre-initialization completed');
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Error pre-initializing ads: $e');
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    // Clean up lifecycle manager
+   // _appLifecycleManager.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     return ScreenUtilInit(
-      // Design size - adjust based on your design
       designSize: const Size(375, 812),
-      minTextAdapt: true,
+      minTextAdapt: true, 
       splitScreenMode: true,
-      useInheritedMediaQuery: true, // Important for performance
-
+      useInheritedMediaQuery: true,
       builder: (context, child) {
         return MaterialApp(
           title: 'Auto Clipper App',
           debugShowCheckedModeBanner: false,
 
-          // Error handling
+          // Global error handling
           builder: (context, widget) {
-            // Handle errors in the widget tree
             ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
-              return Scaffold(
-                body: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error, size: 64, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Something went wrong!',
-                        style: TextStyle(fontSize: 18.sp),
-                      ),
-                      if (kDebugMode) ...[
-                        const SizedBox(height: 8),
-                        Text(
-                          errorDetails.exception.toString(),
-                          style: TextStyle(fontSize: 12.sp),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              );
+              return _buildErrorWidget(errorDetails);
             };
 
             if (widget != null) {
@@ -108,7 +175,6 @@ class MyApp extends StatelessWidget {
                 child: widget,
               );
             }
-
             return const SizedBox.shrink();
           },
 
@@ -116,7 +182,6 @@ class MyApp extends StatelessWidget {
           theme: ThemeData(
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.adaptivePlatformDensity,
-            // Reduce animations to improve performance
             pageTransitionsTheme: const PageTransitionsTheme(
               builders: {
                 TargetPlatform.android: CupertinoPageTransitionsBuilder(),
@@ -125,9 +190,127 @@ class MyApp extends StatelessWidget {
             ),
           ),
 
-          home:  SafeAreaWrapper(child: SimpleSplashScreen()),
+          // Show loading screen until initialization is complete
+          home: SafeAreaWrapper(
+            child:
+                _isInitialized
+                    ? SimpleSplashScreen()
+                    : _buildInitializingScreen(),
+          ),
         );
       },
+    );
+  }
+
+  Widget _buildInitializingScreen() {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            // App Logo/Icon
+            Container(
+              width: 80.w,
+              height: 80.w,
+              decoration: BoxDecoration(
+                color: Colors.blue.shade100,
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: Icon(
+                Icons.content_cut,
+                size: 40.w,
+                color: Colors.blue.shade600,
+              ),
+            ),
+
+            SizedBox(height: 24.h),
+
+            // App Name
+            Text(
+              'AutoClipper',
+              style: TextStyle(
+                fontSize: 24.sp,
+                fontWeight: FontWeight.bold,
+                color: Colors.grey.shade800,
+              ),
+            ),
+
+            SizedBox(height: 32.h),
+
+            // Loading Indicator
+            SizedBox(
+              width: 32.w,
+              height: 32.w,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.w,
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue.shade600),
+              ),
+            ),
+
+            SizedBox(height: 16.h),
+
+            Text(
+              'Initializing...',
+              style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(FlutterErrorDetails errorDetails) {
+    return Scaffold(
+      body: Center(
+        child: Padding(
+          padding: EdgeInsets.all(20.w),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error_outline, size: 64.sp, color: Colors.red),
+              SizedBox(height: 16.h),
+              Text(
+                'Something went wrong!',
+                style: TextStyle(fontSize: 18.sp, fontWeight: FontWeight.bold),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 8.h),
+              Text(
+                'Please restart the app',
+                style: TextStyle(fontSize: 14.sp, color: Colors.grey[600]),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 16.h),
+              ElevatedButton(
+                onPressed: () {
+                  // Try to reinitialize the app
+                  setState(() {
+                    _isInitialized = false;
+                  });
+                  _initializeApp();
+                },
+                child: Text('Retry'),
+              ),
+              if (kDebugMode) ...[
+                SizedBox(height: 16.h),
+                Container(
+                  padding: EdgeInsets.all(12.w),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[100],
+                    borderRadius: BorderRadius.circular(8.r),
+                  ),
+                  child: Text(
+                    errorDetails.exception.toString(),
+                    style: TextStyle(fontSize: 12.sp, fontFamily: 'monospace'),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -144,266 +327,7 @@ class SafeAreaWrapper extends StatelessWidget {
   }
 }
 
-// Optimized widget with better error handling
-class OptimizedWidget extends StatefulWidget {
-  @override
-  _OptimizedWidgetState createState() => _OptimizedWidgetState();
+// Extension to provide easy access to lifecycle manager throughout the app
+extension BuildContextExtension on BuildContext {
+ // AppLifecycleManager get appLifecycleManager => AppLifecycleManager();
 }
-
-class _OptimizedWidgetState extends State<OptimizedWidget>
-    with AutomaticKeepAliveClientMixin {
-  Timer? _debounceTimer;
-  bool _isLoading = false;
-  String? _error;
-
-  @override
-  bool get wantKeepAlive => true;
-
-  @override
-  void dispose() {
-    _debounceTimer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> performHeavyOperation() async {
-    if (_isLoading) return;
-
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
-
-    try {
-      _debounceTimer?.cancel();
-
-      _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
-        try {
-          final result = await compute(heavyComputation, "data");
-
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              // Update your state with result
-            });
-          }
-        } catch (e) {
-          if (mounted) {
-            setState(() {
-              _isLoading = false;
-              _error = e.toString();
-            });
-          }
-        }
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-          _error = e.toString();
-        });
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Important for AutomaticKeepAliveClientMixin
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Optimized Widget', style: TextStyle(fontSize: 18.sp)),
-      ),
-      body: Column(
-        children: [
-          if (_error != null)
-            Container(
-              width: double.infinity,
-              padding: EdgeInsets.all(16.w),
-              color: Colors.red.shade100,
-              child: Text(
-                'Error: $_error',
-                style: TextStyle(color: Colors.red, fontSize: 14.sp),
-              ),
-            ),
-
-          if (_isLoading)
-            Padding(
-              padding: EdgeInsets.all(16.w),
-              child: const CircularProgressIndicator(),
-            ),
-
-          Expanded(
-            child: ListView.builder(
-              itemExtent: 60.h,
-              cacheExtent: 200.h,
-              physics: const ClampingScrollPhysics(), // Better for Android
-              itemCount: 100,
-              itemBuilder: (context, index) {
-                return Container(
-                  height: 60.h,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: 16.w,
-                    vertical: 8.h,
-                  ),
-                  child: Card(
-                    elevation: 2,
-                    child: ListTile(
-                      title: Text(
-                        'Item $index',
-                        style: TextStyle(fontSize: 16.sp),
-                      ),
-                      subtitle: Text(
-                        'Subtitle $index',
-                        style: TextStyle(fontSize: 14.sp),
-                      ),
-                      onTap: () {
-                        // Handle tap
-                        if (kDebugMode) {
-                          print('Tapped item $index');
-                        }
-                      },
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-
-      floatingActionButton: FloatingActionButton(
-        onPressed: _isLoading ? null : performHeavyOperation,
-        child:
-            _isLoading
-                ? SizedBox(
-                  width: 24.w,
-                  height: 24.h,
-                  child: const CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                : const Icon(Icons.refresh),
-      ),
-    );
-  }
-}
-
-// Safer heavy computation with error handling
-String heavyComputation(String data) {
-  try {
-    var result = '';
-    // Reduce iterations to prevent ANR
-    for (int i = 0; i < 100000; i++) {
-      result += data.hashCode.toString();
-
-      // Check for cancellation periodically
-      if (i % 10000 == 0) {
-        // Small delay to prevent blocking
-        Future.delayed(Duration.zero);
-      }
-    }
-    return result;
-  } catch (e) {
-    return 'Error in computation: $e';
-  }
-}
-
-// Optimized image loading with better error handling
-class OptimizedImage extends StatefulWidget {
-  final String imageUrl;
-  final double? width;
-  final double? height;
-
-  const OptimizedImage({
-    Key? key,
-    required this.imageUrl,
-    this.width,
-    this.height,
-  }) : super(key: key);
-
-  @override
-  _OptimizedImageState createState() => _OptimizedImageState();
-}
-
-class _OptimizedImageState extends State<OptimizedImage> {
-  bool _hasError = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final width = widget.width ?? 300.w;
-    final height = widget.height ?? 300.h;
-
-    return Container(
-      width: width,
-      height: height,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8.r),
-        color: Colors.grey.shade200,
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(8.r),
-        child:
-            _hasError
-                ? _buildErrorWidget()
-                : Image.network(
-                  widget.imageUrl,
-                  width: width,
-                  height: height,
-                  cacheWidth: width.toInt(),
-                  cacheHeight: height.toInt(),
-                  fit: BoxFit.cover,
-                  filterQuality: FilterQuality.low,
-                  errorBuilder: (context, error, stackTrace) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (mounted) {
-                        setState(() {
-                          _hasError = true;
-                        });
-                      }
-                    });
-                    return _buildErrorWidget();
-                  },
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-
-                    return Container(
-                      width: width,
-                      height: height,
-                      child: Center(
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3.w,
-                          value:
-                              loadingProgress.expectedTotalBytes != null
-                                  ? loadingProgress.cumulativeBytesLoaded /
-                                      loadingProgress.expectedTotalBytes!
-                                  : null,
-                        ),
-                      ),
-                    );
-                  },
-                ),
-      ),
-    );
-  }
-
-  Widget _buildErrorWidget() {
-    return Container(
-      width: widget.width ?? 300.w,
-      height: widget.height ?? 300.h,
-      color: Colors.grey.shade300,
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.error_outline, size: 48.sp, color: Colors.grey.shade600),
-          SizedBox(height: 8.h),
-          Text(
-            'Failed to load image',
-            style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade600),
-          ),
-        ],
-      ),
-    );
-  }
-}
-

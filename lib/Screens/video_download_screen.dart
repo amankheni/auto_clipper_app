@@ -5,8 +5,11 @@ import 'dart:ui';
 
 import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
+import 'package:auto_clipper_app/Logic/Nativ_controller.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
+import 'package:auto_clipper_app/comman%20class/remot_config.dart';
 import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
+import 'package:flutter/foundation.dart';
 
 
 import 'package:flutter/material.dart';
@@ -33,8 +36,12 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
   late Animation<Offset> _slideAnimation;
+  final NativeAdsController _nativeAdsController = NativeAdsController();
+  bool _hasError = false; // Defined the missing variable
+  bool _isAdLoading = false; // Corrected typo from _isAdvLoading
+  bool _shouldShowAd = false;
 
-  @override
+@override
   void initState() {
     super.initState();
     _animationController = AnimationController(
@@ -55,12 +62,134 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
 
     _loadVideoSessions();
     _animationController.forward();
+
+    final remoteConfig = RemoteConfigService();
+    if (kDebugMode) {
+      print("Native ads enabled: ${remoteConfig.nativeAdsEnabled}");
+      print("Native ad unit ID: ${remoteConfig.nativeAdUnitId}");
+    }
+_initializeAndLoadAd();
+
+
+    // // Initialize ads controller first, then load ad
+    // WidgetsBinding.instance.addPostFrameCallback((_) async {
+    //   if (mounted) {
+    //     // Ensure controller is properly initialized
+    //     await _nativeAdsController.initializeAds();
+
+    //     // Add delay to ensure everything is ready
+    //     await Future.delayed(const Duration(milliseconds: 800));
+
+    //     if (mounted) {
+    //       _loadAd();
+    //     }
+    //   }
+    // });
   }
+
+
+ @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    // Re-initialize and load ad if controller was disposed
+    if (!_nativeAdsController.isInitialized || _hasError) {
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadAd();
+        }
+      });
+    }
+  }
+
 
   @override
   void dispose() {
     _animationController.dispose();
     super.dispose();
+  }
+
+
+
+
+Future<void> _initializeAndLoadAd() async {
+    try {
+      // Ensure remote config is ready
+      final remoteConfig = RemoteConfigService();
+
+      // Initialize ads controller
+      await _nativeAdsController.initializeAds();
+
+      // Wait a bit more for stability
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      if (mounted) {
+        setState(() {
+          _shouldShowAd = true; // Enable ad widget creation
+        });
+
+        // Small delay before loading
+        await Future.delayed(const Duration(milliseconds: 300));
+
+        if (mounted) {
+          _loadAd();
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Ad initialization error: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _shouldShowAd = true; // Still show widget for retry
+          _hasError = true;
+        });
+      }
+    }
+  }
+  
+
+Future<void> _loadAd() async {
+    if (!mounted || _isAdLoading) return;
+
+    setState(() {
+      _isAdLoading = true;
+      _hasError = false;
+    });
+
+    try {
+      // Double-check initialization
+      if (!_nativeAdsController.isInitialized) {
+        await _nativeAdsController.initializeAds();
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      await _nativeAdsController.loadNativeAd(
+        onAdLoaded: (ad) {
+          if (mounted) {
+            setState(() {
+              _isAdLoading = false;
+              _hasError = false;
+            });
+          }
+        },
+        onAdFailedToLoad: (error) {
+          if (mounted) {
+            setState(() {
+              _isAdLoading = false;
+              _hasError = true;
+            });
+          }
+        },
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isAdLoading = false;
+          _hasError = true;
+        });
+      }
+    }
   }
 
   Future<void> _loadVideoSessions() async {
@@ -1487,52 +1616,57 @@ Widget _buildActionButton({
       ),
     );
   }
-
-
+void preloadNativeAds() {
+    final nativeAdsController = NativeAdsController();
+    nativeAdsController.initializeAds().then((_) {
+      nativeAdsController.loadNativeAd();
+    });
+  }
 
 
 @override
   Widget build(BuildContext context) {
-  return Scaffold(
-    backgroundColor: AppColors.backgroundColor,
-    body: SafeArea(
-      child: Column(
-        children: [
-          _buildGradientAppBar(),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                children: [
-                  _buildEnhancedStorageInfo(),
-                  _buildEnhancedStatusMessage(),
-                  
-                  // Native Ad with proper error handling
-                  const NativeAdWidget(
-                    height: 300,
-                    margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                  ),
-                  
-                  if (_isLoading)
-                    SizedBox(
-                      height: 300.h,
-                      child: _buildEnhancedLoadingState(),
-                    )
-                  else if (_sessions.isEmpty)
-                    SizedBox(
-                      height: 400.h,
-                      child: _buildEnhancedEmptyState(),
-                    )
-                  else
-                    _buildVideosList(),
-                ],
+    return Scaffold(
+      backgroundColor: AppColors.backgroundColor,
+      body: SafeArea(
+        child: Column(
+          children: [
+            _buildGradientAppBar(),
+            Expanded(
+              child: SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildEnhancedStorageInfo(),
+                    _buildEnhancedStatusMessage(),
+
+                    // Only show native ad when ready
+                    if (_shouldShowAd)
+                      const NativeAdWidget(
+                        height: 300,
+                        margin: EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 8,
+                        ),
+                      ),
+
+                    if (_isLoading)
+                      SizedBox(
+                        height: 300.h,
+                        child: _buildEnhancedLoadingState(),
+                      )
+                    else if (_sessions.isEmpty)
+                      SizedBox(height: 400.h, child: _buildEnhancedEmptyState())
+                    else
+                      _buildVideosList(),
+                  ],
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
-}
+    );
+  }
 }
 
 class VideoPlayerWidget extends StatefulWidget {
@@ -1617,6 +1751,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
   @override
   void dispose() {
     _controller.dispose();
+    
     super.dispose();
   }
 }

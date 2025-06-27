@@ -23,22 +23,30 @@ class NativeAdsController {
   bool get isLoading => _isLoading;
   NativeAd? get nativeAd => _nativeAd;
 
-   Future<void> initializeAds() async {
+  Future<void> initializeAds() async {
     if (_isInitialized) return;
 
     try {
       // Initialize RemoteConfig first
       await RemoteConfigService().initialize();
 
-      // Initialize Mobile Ads SDK
-      await MobileAds.instance.initialize();
+      // Initialize Mobile Ads SDK with a completion handler
+      await MobileAds.instance.initialize().then((InitializationStatus status) {
+        if (kDebugMode) {
+          print('Mobile Ads SDK initialized: ${status.adapterStatuses}');
+        }
+      });
+
+      // Additional delay for stability
+      await Future.delayed(const Duration(seconds: 1));
 
       _isInitialized = true;
     } catch (e) {
       if (kDebugMode) {
         print('NativeAds initialization error: $e');
       }
-      _isInitialized = true; // Allow fallback to test ads
+      // Even if initialization fails, we can try loading ads
+      _isInitialized = true;
     }
   }
 
@@ -78,11 +86,15 @@ class NativeAdsController {
     }
   }
 
-  Future<void> loadNativeAd({
-    adLayoutBuilder,
+  // Update your NativeAdsController's loadNativeAd method
+Future<void> loadNativeAd({
     Function(NativeAd)? onAdLoaded,
     Function(LoadAdError)? onAdFailedToLoad,
+    int retryCount = 0,
   }) async {
+    // Maximum retry attempts
+    const maxRetryCount = 2;
+
     if (!_isInitialized) {
       await initializeAds();
     }
@@ -95,7 +107,6 @@ class NativeAdsController {
     }
 
     final adUnitId = _getNativeAdUnitId();
-
     if (adUnitId.isEmpty) {
       if (kDebugMode) {
         print('❌ No native ad unit ID available');
@@ -107,11 +118,12 @@ class NativeAdsController {
     _nativeAd?.dispose();
     _nativeAd = null;
     _isNativeAdReady = false;
-
     _isLoading = true;
 
     if (kDebugMode) {
-      print('🔄 Loading native ad with ID: $adUnitId');
+      print(
+        '🔄 Loading native ad with ID: $adUnitId (attempt ${retryCount + 1})',
+      );
     }
 
     _nativeAd = NativeAd(
@@ -123,46 +135,38 @@ class NativeAdsController {
           if (kDebugMode) {
             print('✅ Native ad loaded successfully');
           }
-          if (onAdLoaded != null) {
-            onAdLoaded(ad as NativeAd);
-          }
+          onAdLoaded?.call(ad as NativeAd);
         },
         onAdFailedToLoad: (ad, error) {
           _isNativeAdReady = false;
           _isLoading = false;
           ad.dispose();
           _nativeAd = null;
+
           if (kDebugMode) {
             print('❌ Native ad failed to load: $error');
           }
-          if (onAdFailedToLoad != null) {
-            onAdFailedToLoad(error);
+
+          // Automatic retry logic
+          if (retryCount < maxRetryCount) {
+            if (kDebugMode) {
+              print('🔄 Retrying native ad load...');
+            }
+            Future.delayed(const Duration(seconds: 1), () {
+              loadNativeAd(
+                onAdLoaded: onAdLoaded,
+                onAdFailedToLoad: onAdFailedToLoad,
+                retryCount: retryCount + 1,
+              );
+            });
+          } else {
+            onAdFailedToLoad?.call(error);
           }
         },
-        onAdClicked: (ad) {
-          if (kDebugMode) {
-            print('🖱️ Native ad clicked');
-          }
-        },
-        onAdImpression: (ad) {
-          if (kDebugMode) {
-            print('👁️ Native ad impression recorded');
-          }
-        },
-        onAdClosed: (ad) {
-          if (kDebugMode) {
-            print('❌ Native ad closed');
-          }
-        },
-        onAdOpened: (ad) {
-          if (kDebugMode) {
-            print('👆 Native ad opened');
-          }
-        },
+        // ... rest of your listener code ...
       ),
       request: const AdRequest(),
       nativeTemplateStyle: NativeTemplateStyle(
-        // You can customize the template style here
         templateType: TemplateType.medium,
         cornerRadius: 10.0,
       ),
@@ -171,13 +175,24 @@ class NativeAdsController {
     try {
       await _nativeAd!.load();
     } catch (e) {
-      if (kDebugMode) {
-        print('💥 Exception during native ad loading: $e');
-      }
       _isNativeAdReady = false;
       _isLoading = false;
       _nativeAd?.dispose();
       _nativeAd = null;
+
+      if (kDebugMode) {
+        print('💥 Exception during native ad loading: $e');
+      }
+
+      if (retryCount < maxRetryCount) {
+        Future.delayed(const Duration(seconds: 1), () {
+          loadNativeAd(
+            onAdLoaded: onAdLoaded,
+            onAdFailedToLoad: onAdFailedToLoad,
+            retryCount: retryCount + 1,
+          );
+        });
+      }
     }
   }
 
@@ -190,5 +205,21 @@ class NativeAdsController {
     _isNativeAdReady = false;
     _isLoading = false;
     _isInitialized = false;
+  }
+  // Add this method to your NativeAdsController class
+  Future<void> forceReload() async {
+    if (_isLoading) return;
+
+    // Dispose existing ad first
+    _nativeAd?.dispose();
+    _nativeAd = null;
+    _isNativeAdReady = false;
+    _isLoading = false;
+
+    // Add a small delay
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Load new ad
+    await loadNativeAd();
   }
 }
