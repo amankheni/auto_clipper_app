@@ -1,17 +1,12 @@
-// ignore_for_file: file_names, avoid_print
+// ignore_for_file: file_names, avoid_print, constant_identifier_names
 
 // video_splitter_service.dart
-import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:gal/gal.dart';
-import 'package:gallery_saver_plus/gallery_saver.dart';
-import 'package:memory_info/memory_info.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as path;
 import 'dart:io';
 
 enum DurationUnit { seconds, minutes, hours }

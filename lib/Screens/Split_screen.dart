@@ -256,10 +256,10 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                       SizedBox(height: 24.h),
                       _buildDurationInput(),
                       const NativeAdWidget(
-                        height: 300,
+                        height: 80,
                         margin: EdgeInsets.all(16),
                       ),
-                      SizedBox(height: 10.h),
+                      // SizedBox(height: 10.h),
                       _buildWatermarkSection(),
                       SizedBox(height: 10.h),
                       _buildNavigationSection(),
@@ -280,78 +280,191 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
   Widget _buildAppBar() {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+      height: 70.h, // Fixed compact height
+      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 10.h),
       decoration: BoxDecoration(
         gradient: AppColors.primaryGradient,
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadowMedium,
-            blurRadius: 10.r,
-            offset: Offset(0, 4.h),
+            color: AppColors.shadowMedium.withOpacity(0.15),
+            blurRadius: 8.r,
+            offset: Offset(0, 2.h),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 4.r,
+            offset: Offset(0, 1.h),
           ),
         ],
       ),
       child: Row(
         children: [
-          // Logo with scissors animation
+          // Logo with scissors animation and glassmorphism
           AnimatedBuilder(
             animation: _pulseAnimation,
             builder: (context, child) {
               return Transform.scale(
-                scale: _pulseAnimation.value,
+                scale:
+                    0.95 + (_pulseAnimation.value * 0.1), // More subtle scaling
                 child: Container(
-                  width: 40.w,
-                  height: 40.w,
+                  width: 44.w,
+                  height: 44.h,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12.r),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.25),
+                        Colors.white.withOpacity(0.15),
+                        Colors.white.withOpacity(0.08),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14.r),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.3),
+                      width: 0.8,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 6.r,
+                        offset: Offset(0, 3.h),
+                      ),
+                      BoxShadow(
+                        color: Colors.white.withOpacity(0.1),
+                        blurRadius: 1.r,
+                        offset: Offset(0, -1.h),
+                      ),
+                    ],
                   ),
                   child: Icon(
-                    Icons.content_cut,
+                    Icons.content_cut_rounded,
                     color: Colors.white,
-                    size: 24.sp,
+                    size: 22.sp,
                   ),
                 ),
               );
             },
           ),
-          SizedBox(width: 16.w),
+          SizedBox(width: 14.w),
+
+          // Title section with better typography
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
                   'Auto Clipper',
                   style: TextStyle(
-                    fontSize: 22.sp,
-                    fontWeight: FontWeight.bold,
+                    fontSize: 19.sp,
+                    fontWeight: FontWeight.w700,
                     color: Colors.white,
+                    letterSpacing: -0.4,
+                    height: 1.1,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
+                SizedBox(height: 5.h),
                 Text(
                   'Professional Video Clipper',
                   style: TextStyle(
-                    fontSize: 12.sp,
-                    color: Colors.white.withOpacity(0.8),
+                    fontSize: 13.sp,
+                    color: Colors.white.withOpacity(0.78),
+                    fontWeight: FontWeight.w400,
+                    letterSpacing: 0.3,
+                    height: 1.2,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          if (_isProcessing)
+
+          // Processing indicator with enhanced styling
+          if (_isProcessing) ...[
+            SizedBox(width: 8.w),
             AnimatedBuilder(
               animation: _rotationAnimation,
               builder: (context, child) {
-                return Transform.rotate(
-                  angle: _rotationAnimation.value * 2 * 3.14159,
-                  child: Icon(
-                    Icons.autorenew,
-                    color: Colors.white,
-                    size: 24.sp,
+                return Container(
+                  width: 36.w,
+                  height: 36.h,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withOpacity(0.2),
+                        Colors.white.withOpacity(0.1),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(10.r),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.25),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Transform.rotate(
+                    angle: _rotationAnimation.value * 2 * 3.14159,
+                    child: Icon(
+                      Icons.autorenew_rounded,
+                      color: Colors.white,
+                      size: 18.sp,
+                    ),
                   ),
                 );
               },
             ),
+          ],
+
+          // Status indicator when not processing
+          // if (!_isProcessing) ...[
+          //   SizedBox(width: 8.w),
+          //   Container(
+          //     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
+          //     decoration: BoxDecoration(
+          //       color: Colors.white.withOpacity(0.15),
+          //       borderRadius: BorderRadius.circular(8.r),
+          //       border: Border.all(
+          //         color: Colors.white.withOpacity(0.2),
+          //         width: 0.5,
+          //       ),
+          //     ),
+          //     child: Row(
+          //       mainAxisSize: MainAxisSize.min,
+          //       children: [
+          //         Container(
+          //           width: 6.w,
+          //           height: 6.h,
+          //           decoration: BoxDecoration(
+          //             color: Colors.greenAccent,
+          //             borderRadius: BorderRadius.circular(3.r),
+          //             boxShadow: [
+          //               BoxShadow(
+          //                 color: Colors.greenAccent.withOpacity(0.4),
+          //                 blurRadius: 4.r,
+          //                 spreadRadius: 1.r,
+          //               ),
+          //             ],
+          //           ),
+          //         ),
+          //         SizedBox(width: 6.w),
+          //         // Text(
+          //         //   'Ready',
+          //         //   style: TextStyle(
+          //         //     fontSize: 10.sp,
+          //         //     fontWeight: FontWeight.w500,
+          //         //     color: Colors.white.withOpacity(0.9),
+          //         //     letterSpacing: 0.2,
+          //         //   ),
+          //         // ),
+          //       ],
+          //     ),
+          //   ),
+          //  ],
         ],
       ),
     );
@@ -553,44 +666,44 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                         ),
 
                       // Orientation Indicator
-                      Positioned(
-                        bottom: 8.h,
-                        right: 8.w,
-                        child: Container(
-                          padding: EdgeInsets.symmetric(
-                            horizontal: 12.w,
-                            vertical: 6.h,
-                          ),
-                          decoration: BoxDecoration(
-                            color:
-                                _isPortraitMode
-                                    ? AppColors.primaryPink
-                                    : AppColors.primaryBlue,
-                            borderRadius: BorderRadius.circular(12.r),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                _isPortraitMode
-                                    ? Icons.stay_current_portrait
-                                    : Icons.stay_current_landscape,
-                                size: 12.sp,
-                                color: Colors.white,
-                              ),
-                              SizedBox(width: 4.w),
-                              Text(
-                                _isPortraitMode ? 'Portrait' : 'Landscape',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10.sp,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
+                      // Positioned(
+                      //   bottom: 8.h,
+                      //   right: 8.w,
+                      //   child: Container(
+                      //     padding: EdgeInsets.symmetric(
+                      //       horizontal: 12.w,
+                      //       vertical: 6.h,
+                      //     ),
+                      //     decoration: BoxDecoration(
+                      //       color:
+                      //           _isPortraitMode
+                      //               ? AppColors.primaryPink
+                      //               : AppColors.primaryBlue,
+                      //       borderRadius: BorderRadius.circular(12.r),
+                      //     ),
+                      //     child: Row(
+                      //       mainAxisSize: MainAxisSize.min,
+                      //       children: [
+                      //         Icon(
+                      //           _isPortraitMode
+                      //               ? Icons.stay_current_portrait
+                      //               : Icons.stay_current_landscape,
+                      //           size: 12.sp,
+                      //           color: Colors.white,
+                      //         ),
+                      //         SizedBox(width: 4.w),
+                      //         Text(
+                      //           _isPortraitMode ? 'Portrait' : 'Landscape',
+                      //           style: TextStyle(
+                      //             color: Colors.white,
+                      //             fontSize: 10.sp,
+                      //             fontWeight: FontWeight.bold,
+                      //           ),
+                      //         ),
+                      //       ],
+                      //     ),
+                      //   ),
+                      // ),
                     ],
                   ),
                 ),
@@ -881,13 +994,13 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                         Text(
                           'Watermark Settings',
                           style: TextStyle(
-                            fontSize: 20.sp,
+                            fontSize: 17.sp,
                             fontWeight: FontWeight.bold,
                             color: AppColors.textPrimary,
                             letterSpacing: -0.5,
                           ),
                         ),
-                        SizedBox(height: 2.h),
+                        SizedBox(height: 3.h),
                         Text(
                           'Customize your watermark appearance',
                           style: TextStyle(
@@ -1465,7 +1578,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
   // Custom thumb shape class
 
-Widget _buildSplitButton() {
+  Widget _buildSplitButton() {
     return Container(
       height: 60.h,
       decoration: BoxDecoration(
@@ -1493,9 +1606,7 @@ Widget _buildSplitButton() {
                   ? null
                   : () async {
                     // Show interstitial ad when button is pressed
-                    InterstitialAdsController().handleButtonClick(
-                      context,
-                    );
+                    InterstitialAdsController().handleButtonClick(context);
                     // Then proceed with the splitting
                     _startSplitting();
                   },

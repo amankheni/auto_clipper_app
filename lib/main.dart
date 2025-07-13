@@ -1,20 +1,18 @@
-// Optimized main.dart with proper error handling and ads initialization
+// Updated main.dart with Open App Ads integration
+
+// ignore_for_file: avoid_print
 
 import 'dart:async';
-// import 'package:auto_clipper_app/Screens/splesh_screen.dart';
-// import 'package:auto_clipper_app/Logic/remote_config_service.dart';
-// import 'package:auto_clipper_app/Logic/app_lifecycle_manager.dart';
+import 'package:auto_clipper_app/Logic/open_app_ads_controller.dart';
 import 'package:auto_clipper_app/Screens/splesh_screen.dart';
-import 'package:auto_clipper_app/widget/applife_cycle.dart';
+import 'package:auto_clipper_app/comman%20class/remot_config.dart';
+import 'package:auto_clipper_app/manager/AppLifecycle_Manager.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-
-// Import your ads controller
-// import 'package:auto_clipper_app/controllers/native_ads_controller.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,135 +66,160 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
-class _MyAppState extends State<MyApp> {
-  // final AppLifecycleManager _appLifecycleManager = AppLifecycleManager();
-  // final RemoteConfigService _remoteConfigService = RemoteConfigService();
+class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
+  final AppLifecycleManager _appLifecycleManager = AppLifecycleManager();
+  final RemoteConfigService _remoteConfigService = RemoteConfigService();
+  final OpenAppAdsManager _openAppAdsManager = OpenAppAdsManager();
+
   bool _isInitialized = false;
+  bool _isFirstLaunch = true;
+  bool _isAppInForeground = true;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
   }
 
-  Future<void> _initializeApp() async {
+  @override
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        if (!_isFirstLaunch && _isInitialized) {
+          _isAppInForeground = true;
+          // Show ad when app comes to foreground
+          _showOpenAppAd(isFirstLaunch: false, isColdStart: false);
+        }
+        break;
+      case AppLifecycleState.paused:
+        _isAppInForeground = false;
+        break;
+      case AppLifecycleState.detached:
+        _isAppInForeground = false;
+        break;
+      case AppLifecycleState.inactive:
+        // Do nothing for inactive state
+        break;
+      case AppLifecycleState.hidden:
+        // TODO: Handle this case.
+        throw UnimplementedError();
+    }
+  }
+Future<void> _initializeApp() async {
     try {
-      if (kDebugMode) {
-        print('Starting app initialization...');
-      }
+      // Initialize Remote Config Service first
+      await _remoteConfigService.initialize();
 
-      // Initialize Remote Config Service
-    //  await _remoteConfigService.initialize();
-      if (kDebugMode) {
-        print('Remote Config initialized');
-      }
+      // Initialize Open App Ads Manager
+      await _openAppAdsManager.initialize();
 
-      // Initialize App Lifecycle Manager for Open App Ads
-      // _appLifecycleManager.initialize();
-      if (kDebugMode) {
-        print('App Lifecycle Manager initialized');
-      }
+      // Initialize App Lifecycle Manager
+      _appLifecycleManager.initialize();
 
-      // Pre-initialize other ads
-      await _preInitializeAds();
+      // IMPORTANT: Load the first ad and wait for it
+      await _loadFirstAd();
 
       setState(() {
         _isInitialized = true;
       });
 
-      if (kDebugMode) {
-        print('App initialization completed successfully');
+      // Show first launch ad after initialization
+      if (_isFirstLaunch) {
+        _scheduleFirstLaunchAd();
       }
     } catch (e) {
       if (kDebugMode) {
         print('Error during app initialization: $e');
       }
-      // Even if initialization fails, allow the app to continue
       setState(() {
         _isInitialized = true;
       });
     }
   }
 
-  Future<void> _preInitializeAds() async {
+  Future<void> _loadFirstAd() async {
     try {
-      // Pre-initialize ads controller
-      // Uncomment when you have the NativeAdsController
-      // final adsController = NativeAdsController();
-      // await adsController.initializeAds();
+      if (_remoteConfigService.adsEnabled &&
+          _remoteConfigService.openAppAdsEnabled) {
+        // Load ad and wait for completion
+        await _openAppAdsManager.loadAd();
 
-      // Pre-load a native ad with delay
-      // await Future.delayed(const Duration(milliseconds: 1000));
-      // await adsController.loadNativeAd();
+        // Wait a bit more to ensure ad is fully loaded
+        await Future.delayed(const Duration(milliseconds: 500));
 
-      // Preload an open app ad for future use
-     // _appLifecycleManager.preloadAd();
-
-      if (kDebugMode) {
-        print('Ads pre-initialization completed');
+        if (kDebugMode) {
+          print(
+            'First ad loaded successfully: ${_openAppAdsManager.isAdAvailable}',
+          );
+        }
       }
     } catch (e) {
       if (kDebugMode) {
-        print('Error pre-initializing ads: $e');
+        print('Error loading first ad: $e');
       }
     }
   }
 
-  @override
-  void dispose() {
-    // Clean up lifecycle manager
-   // _appLifecycleManager.dispose();
-    super.dispose();
+
+void _scheduleFirstLaunchAd() {
+    final delay = _remoteConfigService.openAppAdFirstLaunchDelayDuration;
+
+    if (kDebugMode) {
+      print('Scheduling first launch ad in ${delay.inSeconds} seconds');
+    }
+
+    Timer(delay, () {
+      if (mounted && _isAppInForeground && _isInitialized) {
+        if (kDebugMode) {
+          print('First launch timer triggered, showing ad');
+        }
+        _showOpenAppAd(isFirstLaunch: true, isColdStart: true);
+        _isFirstLaunch = false;
+      }
+    });
+  }  
+
+  
+void _showOpenAppAd({
+    required bool isFirstLaunch,
+    required bool isColdStart,
+  }) {
+    if (!_isInitialized || !_isAppInForeground) return;
+
+    // Add a small delay to ensure UI is ready
+    Future.delayed(const Duration(milliseconds: 100), () {
+      if (mounted && _isAppInForeground) {
+        _openAppAdsManager.showAdIfAvailable(
+          isFirstLaunch: isFirstLaunch,
+          isColdStart: isColdStart,
+        );
+      }
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     return ScreenUtilInit(
       designSize: const Size(375, 812),
-      minTextAdapt: true, 
+      minTextAdapt: true,
       splitScreenMode: true,
       useInheritedMediaQuery: true,
       builder: (context, child) {
         return MaterialApp(
           title: 'Auto Clipper App',
           debugShowCheckedModeBanner: false,
-
-          // Global error handling
-          builder: (context, widget) {
-            ErrorWidget.builder = (FlutterErrorDetails errorDetails) {
-              return _buildErrorWidget(errorDetails);
-            };
-
-            if (widget != null) {
-              return MediaQuery(
-                data: MediaQuery.of(context).copyWith(
-                  textScaleFactor: 1.0, // Prevent text scaling issues
-                ),
-                child: widget,
-              );
-            }
-            return const SizedBox.shrink();
-          },
-
-          // Theme configuration
           theme: ThemeData(
             primarySwatch: Colors.blue,
             visualDensity: VisualDensity.adaptivePlatformDensity,
-            pageTransitionsTheme: const PageTransitionsTheme(
-              builders: {
-                TargetPlatform.android: CupertinoPageTransitionsBuilder(),
-                TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-              },
-            ),
           ),
-
-          // Show loading screen until initialization is complete
-          home: SafeAreaWrapper(
-            child:
-                _isInitialized
-                    ? SimpleSplashScreen()
-                    : _buildInitializingScreen(),
-          ),
+          home:
+              _isInitialized
+                  ? SplashScreen() // Your actual splash screen
+                  : _buildInitializingScreen(),
         );
       },
     );
@@ -254,6 +277,15 @@ class _MyAppState extends State<MyApp> {
               'Initializing...',
               style: TextStyle(fontSize: 14.sp, color: Colors.grey.shade600),
             ),
+
+            // Debug info for development
+            if (kDebugMode) ...[
+              SizedBox(height: 20.h),
+              Text(
+                'Loading ads configuration...',
+                style: TextStyle(fontSize: 12.sp, color: Colors.grey.shade500),
+              ),
+            ],
           ],
         ),
       ),
@@ -287,6 +319,7 @@ class _MyAppState extends State<MyApp> {
                   // Try to reinitialize the app
                   setState(() {
                     _isInitialized = false;
+                    _isFirstLaunch = true;
                   });
                   _initializeApp();
                 },
@@ -313,21 +346,4 @@ class _MyAppState extends State<MyApp> {
       ),
     );
   }
-}
-
-// Safe area wrapper to prevent overflow issues
-class SafeAreaWrapper extends StatelessWidget {
-  final Widget child;
-
-  const SafeAreaWrapper({Key? key, required this.child}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return SafeArea(child: child);
-  }
-}
-
-// Extension to provide easy access to lifecycle manager throughout the app
-extension BuildContextExtension on BuildContext {
- // AppLifecycleManager get appLifecycleManager => AppLifecycleManager();
 }

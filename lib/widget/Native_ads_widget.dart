@@ -28,14 +28,14 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   bool _isLoading = true;
   bool _hasError = false;
   Timer? _timeoutTimer;
-  int _retryCount = 0;
+  String _errorMessage = '';
 
   @override
   void initState() {
     super.initState();
-  WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // Wait for the controller to be properly initialized
-      await Future.delayed(const Duration(milliseconds: 1500));
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      // Reduce delay to 500ms
+      await Future.delayed(const Duration(milliseconds: 500));
 
       if (mounted) {
         _loadAd();
@@ -46,17 +46,32 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
   Future<void> _loadAd() async {
     if (!mounted) return;
 
+    if (kDebugMode) {
+      print('🔄 Starting native ad load...');
+    }
+
     setState(() {
       _isLoading = true;
       _hasError = false;
+      _errorMessage = '';
     });
 
+    // Check if controller is initialized
+    if (!_controller.isInitialized) {
+      if (kDebugMode) {
+        print('⚠️ Controller not initialized, initializing...');
+      }
+      await _controller.initializeAds();
+    }
+
+    // Set timeout to 10 seconds
     _timeoutTimer?.cancel();
-    _timeoutTimer = Timer(const Duration(seconds: 15), () {
+    _timeoutTimer = Timer(const Duration(seconds: 10), () {
       if (mounted && _isLoading) {
         setState(() {
           _isLoading = false;
           _hasError = true;
+          _errorMessage = 'Ad loading timeout';
         });
       }
     });
@@ -69,7 +84,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
             setState(() {
               _isLoading = false;
               _hasError = false;
-              _retryCount = 0;
+              _errorMessage = '';
             });
           }
         },
@@ -79,7 +94,11 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
             setState(() {
               _isLoading = false;
               _hasError = true;
+              _errorMessage = error.message;
             });
+          }
+          if (kDebugMode) {
+            print('Native ad failed: ${error.message}');
           }
         },
       );
@@ -89,15 +108,14 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
         setState(() {
           _isLoading = false;
           _hasError = true;
+          _errorMessage = e.toString();
         });
       }
     }
   }
 
-
   @override
   Widget build(BuildContext context) {
-    // Show loading indicator while ad is loading
     if (_isLoading) {
       return Container(
         height: widget.height,
@@ -113,7 +131,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              CircularProgressIndicator(),
+              CircularProgressIndicator(strokeWidth: 2),
               SizedBox(height: 8),
               Text(
                 'Loading Ad...',
@@ -125,42 +143,38 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
       );
     }
 
-    // Hide widget if ad failed to load or not ready
     if (_hasError ||
         !_controller.isNativeAdReady ||
         _controller.nativeAd == null) {
       if (kDebugMode) {
-        // Show error state in debug mode
         return Container(
           height: widget.height,
           width: widget.width,
           margin: widget.margin,
-          decoration:
-              widget.decoration?.copyWith(
-                color: Colors.red[50],
-                border: Border.all(color: Colors.red[200]!),
-              ) ??
-              BoxDecoration(
-                color: Colors.red[50],
-                border: Border.all(color: Colors.red[200]!),
-                borderRadius: const BorderRadius.all(Radius.circular(12)),
-              ),
-          child:  Center(
+          decoration: widget.decoration?.copyWith(
+            color: Colors.red[50],
+            border: Border.all(color: Colors.red[200]!),
+          ),
+          child: Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(Icons.error_outline, color: Colors.red, size: 32),
+                Icon(Icons.error_outline, color: Colors.red, size: 24),
                 SizedBox(height: 8),
                 Text(
-                  'Ad Failed to Load',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                  ),
+                  'Ad Failed',
+                  style: TextStyle(color: Colors.red, fontSize: 12),
                 ),
-                SizedBox(height: 4),
-                TextButton(
+                if (_errorMessage.isNotEmpty) ...[
+                  SizedBox(height: 4),
+                  Text(
+                    _errorMessage,
+                    style: TextStyle(color: Colors.red, fontSize: 10),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+                SizedBox(height: 8),
+                ElevatedButton(
                   onPressed: _loadAd,
                   child: Text('Retry', style: TextStyle(fontSize: 10)),
                 ),
@@ -169,11 +183,9 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
           ),
         );
       }
-      // Return empty widget in production
       return const SizedBox.shrink();
     }
 
-    // Show the native ad
     return Container(
       width: widget.width,
       height: widget.height,
@@ -182,12 +194,5 @@ class _NativeAdWidgetState extends State<NativeAdWidget> {
       clipBehavior: Clip.antiAlias,
       child: AdWidget(ad: _controller.nativeAd!),
     );
-  }
-
-  @override
-  void dispose() {
-    _timeoutTimer?.cancel();
-    // Don't dispose the ad here since it's managed by the singleton controller
-    super.dispose();
   }
 }

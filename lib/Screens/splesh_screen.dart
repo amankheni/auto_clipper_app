@@ -1,200 +1,269 @@
-  // ignore_for_file: use_build_context_synchronously
+// ignore_for_file: use_build_context_synchronously
 
-  import 'package:auto_clipper_app/Logic/open_app_ads_controller.dart';
-  import 'package:auto_clipper_app/bottomnavigationbar_scren.dart';
-  import 'package:auto_clipper_app/comman%20class/remot_config.dart';
-  import 'package:flutter/foundation.dart';
-  import 'package:flutter/material.dart';
-  import 'package:flutter_screenutil/flutter_screenutil.dart';
-  import 'package:google_mobile_ads/google_mobile_ads.dart';
-  import 'package:firebase_core/firebase_core.dart';
-  class SimpleSplashScreen extends StatefulWidget {
-    const SimpleSplashScreen({Key? key}) : super(key: key);
+import 'package:auto_clipper_app/Logic/open_app_ads_controller.dart';
+import 'package:auto_clipper_app/bottomnavigationbar_scren.dart';
+import 'package:auto_clipper_app/comman%20class/remot_config.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'dart:async';
 
-    @override
-    _SimpleSplashScreenState createState() => _SimpleSplashScreenState();
+
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  final RemoteConfigService _remoteConfig = RemoteConfigService();
+
+  bool _isInitialized = false;
+  String _statusMessage = 'Initializing...';
+  bool _navigationComplete = false;
+  Timer? _navigationTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _initializeApp();
   }
 
-  class _SimpleSplashScreenState extends State<SimpleSplashScreen> {
-    final AppOpenAdManager _adManager = AppOpenAdManager();
-    final RemoteConfigService _remoteConfig = RemoteConfigService();
+  @override
+  void dispose() {
+    _navigationTimer?.cancel();
+    super.dispose();
+  }
 
-    bool _isInitialized = false;
-    String _statusMessage = 'Initializing...';
-
-    @override
-    void initState() {
-      super.initState();
-      _initializeApp();
-    }
-
-   Future<void> _initializeApp() async {
+  Future<void> _initializeApp() async {
     try {
-      _updateStatus('Initializing Firebase...');
-      await Firebase.initializeApp();
+      _updateStatus('Connecting to server...');
+      if (!Firebase.apps.isNotEmpty) {
+        await Firebase.initializeApp();
+      }
 
-      _updateStatus('Loading configuration...');
+      _updateStatus('Loading settings...');
       await _remoteConfig.initialize();
 
-      _updateStatus('Initializing ads...');
-      await MobileAds.instance.initialize();
-
-      _updateStatus('Preparing ads...');
-      await _adManager.loadAd();
-
-      // Give more time for ad to load
-      _updateStatus('Loading ads...');
-      await Future.delayed(const Duration(seconds: 3));
-
-      _updateStatus('Starting app...');
-      await Future.delayed(const Duration(seconds: 1));
+      _updateStatus('Preparing services...');
 
       setState(() => _isInitialized = true);
-      await Future.delayed(const Duration(milliseconds: 500));
+      _updateStatus('Ready to start...');
 
-      _showAdAndNavigate();
-    } catch (e) {
-      debugPrint('Initialization error: $e');
-      _navigateToHome();
-    }
-  }
+      await Future.delayed(const Duration(milliseconds: 800));
 
-    void _updateStatus(String message) {
-      if (mounted) {
-        setState(() => _statusMessage = message);
+      if (!_navigationComplete) {
+        _navigateToHome();
       }
-    }
-
-    void _showAdAndNavigate() {
-    debugPrint('=== AD DEBUG INFO ===');
-    debugPrint('Ads enabled: ${_remoteConfig.adsEnabled}');
-    debugPrint('Open app ads enabled: ${_remoteConfig.openAppAdsEnabled}');
-    debugPrint('Ad unit ID: ${_remoteConfig.openAppAdUnitId}');
-    debugPrint('Is ad available: ${_adManager.isAdAvailable}');
-    debugPrint('Is showing ad: ${_adManager.isShowingAd}');
-
-    // Try to show the ad
-    final adShown = _adManager.showAdIfAvailable();
-
-    if (adShown) {
-      debugPrint(
-        'Open app ad shown, navigation will happen after ad is dismissed',
-      );
-    } else {
-      debugPrint('No ad to show, navigating immediately');
+    } catch (e) {
+      debugPrint('Splash initialization error: $e');
+      _updateStatus('Starting app...');
+      await Future.delayed(const Duration(milliseconds: 1000));
       _navigateToHome();
     }
   }
 
-    void _navigateToHome() {
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (context) => const BottomNavigationScreen()),
-      );
+  void _updateStatus(String message) {
+    if (mounted) {
+      setState(() => _statusMessage = message);
+      debugPrint('SplashScreen Status: $message');
     }
+  }
 
-    @override
-    void dispose() {
-      _adManager.dispose();
-      super.dispose();
-    }
+  void _navigateToHome() {
+    if (!mounted || _navigationComplete) return;
 
-    @override
-    Widget build(BuildContext context) {
-      return Scaffold(
-        backgroundColor: Colors.white,
-        body: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: EdgeInsets.all(32.w),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // App Logo/Icon
-                  Container(
-                    width: 120.w,
-                    height: 120.w,
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade100,
-                      borderRadius: BorderRadius.circular(20.r),
-                    ),
-                    child: Icon(
-                      Icons.content_cut,
-                      size: 60.w,
-                      color: Colors.blue.shade600,
-                    ),
-                  ),
+    _navigationComplete = true;
+    _navigationTimer?.cancel();
+    debugPrint('Splash: Navigating to home screen');
 
-                  SizedBox(height: 32.h),
+    Navigator.pushReplacement(
+      context,
+      PageRouteBuilder(
+        pageBuilder:
+            (context, animation, secondaryAnimation) =>
+                const BottomNavigationScreen(),
+        transitionsBuilder: (context, animation, secondaryAnimation, child) {
+          const begin = Offset(1.0, 0.0);
+          const end = Offset.zero;
+          const curve = Curves.ease;
 
-                  // App Name
-                  Text(
-                    'AutoClipper',
-                    style: TextStyle(
-                      fontSize: 28.sp,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade800,
-                    ),
-                  ),
+          var tween = Tween(
+            begin: begin,
+            end: end,
+          ).chain(CurveTween(curve: curve));
 
-                  SizedBox(height: 8.h),
+          return SlideTransition(
+            position: animation.drive(tween),
+            child: child,
+          );
+        },
+        transitionDuration: const Duration(milliseconds: 300),
+      ),
+    );
+  }
 
-                  // App Tagline
-                  Text(
-                    'Smart Clipping Made Easy',
-                    style: TextStyle(
-                      fontSize: 16.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                  ),
-
-                  SizedBox(height: 48.h),
-
-                  // Loading Indicator
-                  SizedBox(
-                    width: 40.w,
-                    height: 40.w,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 3.w,
-                      valueColor: AlwaysStoppedAnimation<Color>(
-                        Colors.blue.shade600,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: EdgeInsets.all(32.w),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: 120.w,
+                  height: 120.w,
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade100,
+                    borderRadius: BorderRadius.circular(20.r),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.blue.shade100.withOpacity(0.5),
+                        blurRadius: 10,
+                        spreadRadius: 2,
                       ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.content_cut,
+                    size: 60.w,
+                    color: Colors.blue.shade600,
+                  ),
+                ),
+
+                SizedBox(height: 32.h),
+
+                Text(
+                  'AutoClipper',
+                  style: TextStyle(
+                    fontSize: 28.sp,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.grey.shade800,
+                    letterSpacing: 1.2,
+                  ),
+                ),
+
+                SizedBox(height: 8.h),
+
+                Text(
+                  'Smart Video Clipping Tool',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+
+                SizedBox(height: 48.h),
+
+                SizedBox(
+                  width: 40.w,
+                  height: 40.w,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 3.w,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      Colors.blue.shade600,
                     ),
                   ),
+                ),
 
-                  SizedBox(height: 24.h),
+                SizedBox(height: 24.h),
 
-                  // Status Message
-                  Text(
-                    _statusMessage,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      color: Colors.grey.shade600,
-                    ),
-                    textAlign: TextAlign.center,
+                Text(
+                  _statusMessage,
+                  style: TextStyle(
+                    fontSize: 14.sp,
+                    color: Colors.grey.shade600,
                   ),
+                  textAlign: TextAlign.center,
+                ),
 
-                  if (_isInitialized) ...[
-                    SizedBox(height: 16.h),
-                    Text(
-                      '✓ Ready',
-                      style: TextStyle(
-                        fontSize: 14.sp,
+                if (_isInitialized) ...[
+                  SizedBox(height: 16.h),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.check_circle,
                         color: Colors.green.shade600,
-                        fontWeight: FontWeight.w500,
+                        size: 16.sp,
                       ),
-                    ),
-                  ],
+                      SizedBox(width: 4.w),
+                      Text(
+                        'Ready',
+                        style: TextStyle(
+                          fontSize: 14.sp,
+                          color: Colors.green.shade600,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
-              ),
+
+                if (kDebugMode) ...[
+                  SizedBox(height: 24.h),
+                  Container(
+                    padding: EdgeInsets.all(12.w),
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(8.r),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Debug Info:',
+                          style: TextStyle(
+                            fontSize: 12.sp,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.grey.shade700,
+                          ),
+                        ),
+                        SizedBox(height: 4.h),
+                        Text(
+                          'Ads Enabled: ${_remoteConfig.adsEnabled}',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            color: Colors.grey.shade600,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        Text(
+                          'Open App Ads: ${_remoteConfig.openAppAdsEnabled}',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            color: Colors.grey.shade600,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                        Text(
+                          'Test Mode: ${_remoteConfig.adsTestMode}',
+                          style: TextStyle(
+                            fontSize: 11.sp,
+                            color: Colors.grey.shade600,
+                            fontFamily: 'monospace',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
-      );
-    }
+      ),
+    );
   }
+}
 
 // class SplashScreen extends StatefulWidget {
 //   const SplashScreen({Key? key}) : super(key: key);

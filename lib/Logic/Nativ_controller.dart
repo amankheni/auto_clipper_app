@@ -1,5 +1,6 @@
 import 'package:auto_clipper_app/comman%20class/remot_config.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:firebase_remote_config/firebase_remote_config.dart';
 
@@ -16,7 +17,7 @@ class NativeAdsController {
   // Test ad unit ID for development
   final String _testAdUnitId = 'ca-app-pub-3940256099942544/2247696110';
   // Your production ad unit ID from the image you shared
-  final String _productionAdUnitId = 'ca-app-pub-7772180367051787/6519005372';
+  final String _productionAdUnitId = 'ca-app-pub-7772180367051787/2949453118';
 
   bool get isNativeAdReady => _isNativeAdReady;
   bool get isInitialized => _isInitialized;
@@ -49,7 +50,6 @@ class NativeAdsController {
       _isInitialized = true;
     }
   }
-
 
   String _getNativeAdUnitId() {
     try {
@@ -87,7 +87,7 @@ class NativeAdsController {
   }
 
   // Update your NativeAdsController's loadNativeAd method
-Future<void> loadNativeAd({
+  Future<void> loadNativeAd({
     Function(NativeAd)? onAdLoaded,
     Function(LoadAdError)? onAdFailedToLoad,
     int retryCount = 0,
@@ -163,12 +163,71 @@ Future<void> loadNativeAd({
             onAdFailedToLoad?.call(error);
           }
         },
-        // ... rest of your listener code ...
       ),
       request: const AdRequest(),
       nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.medium,
-        cornerRadius: 10.0,
+        templateType: TemplateType.small,
+
+        // Enhanced styling to match your app's design
+        cornerRadius: 10.0, // Increased for modern rounded appearance
+        // Main background with subtle elevation feel
+        mainBackgroundColor: const Color(
+          0xFFF8F9FA,
+        ), // Light gray-white background
+        // Call to action button styling (like your INSTALL button)
+        callToActionTextStyle: NativeTemplateTextStyle(
+          textColor: Colors.white,
+          backgroundColor: const Color(
+            0xFF1976D2,
+          ), // Material blue similar to your install button
+          style: NativeTemplateFontStyle.bold,
+          size: 15.0,
+        ),
+
+        // Primary text (app name/title)
+        primaryTextStyle: NativeTemplateTextStyle(
+          textColor: const Color(0xFF1A1A1A), // Dark gray for better contrast
+          backgroundColor: Colors.transparent,
+          style: NativeTemplateFontStyle.bold, // Made bold for better hierarchy
+          size: 17.0, // Slightly larger for prominence
+        ),
+
+        // Secondary text (description)
+        secondaryTextStyle: NativeTemplateTextStyle(
+          textColor: const Color(0xFF6B7280), // Modern gray color
+          backgroundColor: Colors.transparent,
+          style: NativeTemplateFontStyle.normal,
+          size: 14.0,
+        ),
+
+        // Tertiary text (additional info like ratings, etc.)
+        tertiaryTextStyle: NativeTemplateTextStyle(
+          textColor: const Color(
+            0xFF9CA3AF,
+          ), // Lighter gray for less important text
+          backgroundColor: Colors.transparent,
+          style: NativeTemplateFontStyle.normal,
+          size: 12.0,
+        ),
+
+        // Additional customizations for modern look
+        // Note: These may not be available in all versions, adjust as needed
+        /*
+  adLabelTextStyle: NativeTemplateTextStyle(
+    textColor: const Color(0xFF6B7280),
+    backgroundColor: Colors.transparent,
+    style: NativeTemplateFontStyle.normal,
+    size: 10.0,
+  ),
+  
+  // Add subtle border if supported
+  borderColor: const Color(0xFFE5E7EB),
+  borderWidth: 1.0,
+  
+  // Shadow/elevation effect if supported
+  elevation: 2.0,
+  shadowColor: Colors.black12,
+  */
       ),
     );
 
@@ -206,6 +265,7 @@ Future<void> loadNativeAd({
     _isLoading = false;
     _isInitialized = false;
   }
+
   // Add this method to your NativeAdsController class
   Future<void> forceReload() async {
     if (_isLoading) return;

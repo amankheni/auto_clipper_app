@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use, use_build_context_synchronously, unnecessary_brace_in_string_interps, avoid_print, library_private_types_in_public_api, unnecessary_null_comparison
 
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 
@@ -7,10 +8,10 @@ import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
 import 'package:auto_clipper_app/Logic/Nativ_controller.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
+import 'package:auto_clipper_app/Screens/Video_player_screen.dart';
 import 'package:auto_clipper_app/comman%20class/remot_config.dart';
 import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
 import 'package:flutter/foundation.dart';
-
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
@@ -40,8 +41,11 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   bool _hasError = false; // Defined the missing variable
   bool _isAdLoading = false; // Corrected typo from _isAdvLoading
   bool _shouldShowAd = false;
+  Timer? _refreshTimer;
+  bool _isAutoRefreshEnabled = true;
+  DateTime? _lastRefreshTime;
 
-@override
+  @override
   void initState() {
     super.initState();
     _animationController = AnimationController(
@@ -62,33 +66,17 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
 
     _loadVideoSessions();
     _animationController.forward();
+    _startAutoRefresh(); // Start auto-refresh
 
     final remoteConfig = RemoteConfigService();
     if (kDebugMode) {
       print("Native ads enabled: ${remoteConfig.nativeAdsEnabled}");
       print("Native ad unit ID: ${remoteConfig.nativeAdUnitId}");
     }
-_initializeAndLoadAd();
-
-
-    // // Initialize ads controller first, then load ad
-    // WidgetsBinding.instance.addPostFrameCallback((_) async {
-    //   if (mounted) {
-    //     // Ensure controller is properly initialized
-    //     await _nativeAdsController.initializeAds();
-
-    //     // Add delay to ensure everything is ready
-    //     await Future.delayed(const Duration(milliseconds: 800));
-
-    //     if (mounted) {
-    //       _loadAd();
-    //     }
-    //   }
-    // });
+    _initializeAndLoadAd();
   }
 
-
- @override
+  @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
@@ -102,17 +90,204 @@ _initializeAndLoadAd();
     }
   }
 
+  // Correct lifecycle method name
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    //super.didChangeAppLifecycleState(state); // Note the correct capitalization
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        // App came to foreground, start auto-refresh
+        _startAutoRefresh();
+        // Immediately refresh to catch any changes
+        Future.delayed(Duration(milliseconds: 500), () {
+          if (mounted) _refreshVideoSessions();
+        });
+        break;
+      case AppLifecycleState.paused:
+        // App went to background, stop auto-refresh to save battery
+        _stopAutoRefresh();
+        break;
+      default:
+        break;
+    }
+  }
 
   @override
   void dispose() {
+    _stopAutoRefresh(); // Stop auto-refresh
     _animationController.dispose();
     super.dispose();
   }
 
+  // Add this method to your _VideoDownloadScreenState class
+  void _startAutoRefresh() {
+    _refreshTimer?.cancel();
+    if (_isAutoRefreshEnabled) {
+      _refreshTimer = Timer.periodic(Duration(seconds: 3), (timer) {
+        if (mounted) {
+          _refreshVideoSessions();
+        }
+      });
+    }
+  }
 
+  // Add this method to your _VideoDownloadScreenState class
+  void _stopAutoRefresh() {
+    _refreshTimer?.cancel();
+  }
 
+  // Add this method to your _VideoDownloadScreenState class
+  Future<void> _refreshVideoSessions() async {
+    if (_isLoading) return; // Prevent multiple simultaneous refreshes
 
-Future<void> _initializeAndLoadAd() async {
+    try {
+      final sessions = await _controller.loadVideoSessions();
+      if (mounted) {
+        setState(() {
+          final oldCount = _sessions.fold<int>(
+            0,
+            (sum, session) => sum + session.videos.length,
+          );
+          _sessions = sessions;
+          final newCount = _sessions.fold<int>(
+            0,
+            (sum, session) => sum + session.videos.length,
+          );
+
+          // Preserve the selected session if it still exists
+          if (_selectedSession != null) {
+            _selectedSession = sessions.firstWhere(
+              (s) => s.sessionId == _selectedSession!.sessionId,
+              orElse: () => _selectedSession!,
+            );
+          }
+
+          // Show notification if new videos were added
+          if (newCount > oldCount) {
+            final addedCount = newCount - oldCount;
+            _showCustomSnackBar(
+              '$addedCount new video${addedCount > 1 ? 's' : ''} added!',
+              AppColors.successColor,
+              Icons.video_library,
+            );
+          }
+
+          _lastRefreshTime = DateTime.now();
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Auto-refresh error: $e');
+      }
+    }
+  }
+
+Widget _buildRefreshableContent() {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return RefreshIndicator(
+          onRefresh: () async {
+            await _loadVideoSessions();
+          },
+          color: AppColors.primaryBlue,
+          backgroundColor: AppColors.cardBackground,
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(minHeight: constraints.maxHeight),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildEnhancedStorageInfo(),
+                  _buildEnhancedStatusMessage(),
+                  _buildAutoRefreshIndicator(),
+                  if (_shouldShowAd)
+                    const NativeAdWidget(
+                      height: 300,
+                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    ),
+                  if (_isLoading)
+                    SizedBox(height: 300.h, child: _buildEnhancedLoadingState())
+                  else if (_sessions.isEmpty)
+                    SizedBox(height: 400.h, child: _buildEnhancedEmptyState())
+                  else
+                    _buildVideosList(),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // Add this new widget to show auto-refresh status
+  Widget _buildAutoRefreshIndicator() {
+    if (!_isAutoRefreshEnabled || _lastRefreshTime == null) {
+      return SizedBox.shrink();
+    }
+
+    final timeSinceRefresh = DateTime.now().difference(_lastRefreshTime!);
+    final nextRefreshIn = Duration(seconds: 3) - timeSinceRefresh;
+
+    if (nextRefreshIn.isNegative) return SizedBox.shrink();
+    return Container();
+    // return Container(
+    //   margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
+    //   padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+    //   decoration: BoxDecoration(
+    //     color: AppColors.primaryBlue.withOpacity(0.1),
+    //     borderRadius: BorderRadius.circular(12.r),
+    //     border: Border.all(
+    //       color: AppColors.primaryBlue.withOpacity(0.3),
+    //       width: 1,
+    //     ),
+    //   ),
+    //   child: Row(
+    //     mainAxisSize: MainAxisSize.min,
+    //     children: [
+    //       SizedBox(
+    //         width: 12.w,
+    //         height: 12.w,
+    //         child: CircularProgressIndicator(
+    //           strokeWidth: 1.5,
+    //           valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
+    //         ),
+    //       ),
+    //       SizedBox(width: 8.w),
+    //       Text(
+    //         'Auto-refreshing...',
+    //         style: TextStyle(
+    //           fontSize: 11.sp,
+    //           color: AppColors.primaryBlue,
+    //           fontWeight: FontWeight.w500,
+    //         ),
+    //       ),
+    //       SizedBox(width: 8.w),
+    //       GestureDetector(
+    //         onTap: () {
+    //           setState(() {
+    //             _isAutoRefreshEnabled = !_isAutoRefreshEnabled;
+    //           });
+    //           if (_isAutoRefreshEnabled) {
+    //             _startAutoRefresh();
+    //           } else {
+    //             _stopAutoRefresh();
+    //           }
+    //         },
+    //         child: Icon(
+    //           _isAutoRefreshEnabled ? Icons.pause_circle : Icons.play_circle,
+    //           size: 16.sp,
+    //           color: AppColors.primaryBlue,
+    //         ),
+    //       ),
+    //     ],
+    //   ),
+    // );
+  }
+  // Correct lifecycle method name
+
+  Future<void> _initializeAndLoadAd() async {
     try {
       // Ensure remote config is ready
       final remoteConfig = RemoteConfigService();
@@ -147,9 +322,8 @@ Future<void> _initializeAndLoadAd() async {
       }
     }
   }
-  
 
-Future<void> _loadAd() async {
+  Future<void> _loadAd() async {
     if (!mounted || _isAdLoading) return;
 
     setState(() {
@@ -422,17 +596,24 @@ Future<void> _loadAd() async {
         gradient: AppColors.primaryGradient,
         boxShadow: [
           BoxShadow(
-            color: AppColors.primaryOrange.withOpacity(0.3),
-            blurRadius: 20.r,
-            offset: Offset(0, 4.h),
+            color: AppColors.primaryOrange.withOpacity(0.2),
+            blurRadius: 12.r,
+            offset: Offset(0, 2.h),
+          ),
+          BoxShadow(
+            color: Colors.black.withOpacity(0.1),
+            blurRadius: 8.r,
+            offset: Offset(0, 1.h),
           ),
         ],
       ),
       child: SafeArea(
-        child: Padding(
-          padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
+        child: Container(
+          height: 68.h, // Fixed compact height
+          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
           child: Row(
             children: [
+              // Back button (if session selected)
               if (_selectedSession != null)
                 GestureDetector(
                   onTap: () {
@@ -440,82 +621,126 @@ Future<void> _loadAd() async {
                       _selectedSession = null;
                     });
                   },
-                  // child: Icon(
-                  //   Icons.arrow_back_ios_new,
-                  //   color: Colors.white,
-                  //   size: 20.sp,
-                  // ),
                   child: Container(
-                    padding: EdgeInsets.all(8.r),
-                    // decoration: BoxDecoration(
-                    //   color: Colors.white.withOpacity(0.2),
-                    //   borderRadius: BorderRadius.circular(12.r),
-                    // ),
+                    width: 36.w,
+                    height: 36.h,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(10.r),
+                      border: Border.all(
+                        color: Colors.white.withOpacity(0.2),
+                        width: 0.5,
+                      ),
+                    ),
                     child: Icon(
                       Icons.arrow_back_ios_new,
                       color: Colors.white,
-                      size: 20.sp,
+                      size: 16.sp,
                     ),
                   ),
                 ),
-              if (_selectedSession != null) SizedBox(width: 16.w),
+              if (_selectedSession != null) SizedBox(width: 12.w),
+
+              // Main icon
               Container(
-                padding: EdgeInsets.all(12.r),
+                width: 40.w,
+                height: 40.h,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withOpacity(0.25),
+                      Colors.white.withOpacity(0.15),
+                    ],
+                  ),
                   borderRadius: BorderRadius.circular(12.r),
+                  border: Border.all(
+                    color: Colors.white.withOpacity(0.3),
+                    width: 0.8,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4.r,
+                      offset: Offset(0, 2.h),
+                    ),
+                  ],
                 ),
                 child: Icon(
                   _selectedSession != null
-                      ? Icons.video_library
+                      ? Icons.video_library_rounded
                       : Icons.download_rounded,
                   color: Colors.white,
                   size: 20.sp,
                 ),
               ),
-              SizedBox(width: 16.w),
+              SizedBox(width: 12.w),
+
+              // Title section
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
                       _selectedSession != null
                           ? _selectedSession!.displayName
                           : 'My Downloads',
                       style: TextStyle(
-                        fontSize: 22.sp,
-                        fontWeight: FontWeight.bold,
+                        fontSize: 18.sp,
+                        fontWeight: FontWeight.w700,
                         color: Colors.white,
+                        letterSpacing: -0.3,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
+                    SizedBox(height: 2.h),
                     Text(
                       _selectedSession != null
                           ? 'Video Collection'
                           : 'Professional Video Downloader',
                       style: TextStyle(
-                        fontSize: 12.sp,
-                        color: Colors.white.withOpacity(0.8),
+                        fontSize: 13.sp,
+                        color: Colors.white.withOpacity(0.75),
                         fontWeight: FontWeight.w400,
+                        letterSpacing: 0.2,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
               ),
-              if (_selectedSession != null)
+
+              // Menu button (if session selected)
+              if (_selectedSession != null) ...[
+                SizedBox(width: 8.w),
                 Container(
+                  width: 36.w,
+                  height: 36.h,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12.r),
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(10.r),
+                    border: Border.all(
+                      color: Colors.white.withOpacity(0.2),
+                      width: 0.5,
+                    ),
                   ),
                   child: PopupMenuButton<String>(
                     icon: Icon(
-                      Icons.more_vert,
+                      Icons.more_vert_rounded,
                       color: Colors.white,
-                      size: 20.sp,
+                      size: 16.sp,
                     ),
+                    padding: EdgeInsets.zero,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12.r),
                     ),
+                    color: Colors.white,
+                    elevation: 8,
+                    offset: Offset(0, 8.h),
                     onSelected: (value) {
                       if (value == 'delete_session') {
                         _showDeleteSessionDialog(_selectedSession!);
@@ -525,28 +750,43 @@ Future<void> _loadAd() async {
                         (context) => [
                           PopupMenuItem(
                             value: 'delete_session',
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.delete_outline,
-                                  color: AppColors.errorColor,
-                                  size: 18.sp,
-                                ),
-                                SizedBox(width: 12.w),
-                                Text(
-                                  'Delete Session',
-                                  style: TextStyle(
-                                    fontSize: 14.sp,
-                                    color: AppColors.errorColor,
-                                    fontWeight: FontWeight.w500,
+                            height: 44.h,
+                            child: Container(
+                              padding: EdgeInsets.symmetric(horizontal: 4.w),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 32.w,
+                                    height: 32.h,
+                                    decoration: BoxDecoration(
+                                      color: AppColors.errorColor.withOpacity(
+                                        0.1,
+                                      ),
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Icon(
+                                      Icons.delete_outline_rounded,
+                                      color: AppColors.errorColor,
+                                      size: 16.sp,
+                                    ),
                                   ),
-                                ),
-                              ],
+                                  SizedBox(width: 12.w),
+                                  Text(
+                                    'Delete Session',
+                                    style: TextStyle(
+                                      fontSize: 14.sp,
+                                      color: AppColors.errorColor,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ],
                   ),
                 ),
+              ],
             ],
           ),
         ),
@@ -578,20 +818,15 @@ Future<void> _loadAd() async {
             : '${(totalSize / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
 
     return Container(
-      // Professional background with gradient
       decoration: BoxDecoration(
         borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(20.sp),
-          bottomRight: Radius.circular(20.sp),
+          bottomLeft: Radius.circular(16.r),
+          bottomRight: Radius.circular(16.r),
         ),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Color(0xFF1A1A2E), // Dark navy
-            Color(0xFF16213E), // Darker blue
-            Color(0xFF0F0F23), // Deep dark
-          ],
+          colors: [Color(0xFF1A1A2E), Color(0xFF16213E), Color(0xFF0F0F23)],
           stops: [0.0, 0.6, 1.0],
         ),
       ),
@@ -600,185 +835,149 @@ Future<void> _loadAd() async {
         child: FadeTransition(
           opacity: _fadeAnimation,
           child: Container(
-            margin: EdgeInsets.symmetric(horizontal: 24.w, vertical: 20.h),
-            child: Stack(
-              children: [
-                // Subtle background pattern
-                Positioned.fill(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(20.r),
-                      boxShadow: [
-                        BoxShadow(
-                          color: AppColors.primaryPurple.withOpacity(0.1),
-                          blurRadius: 50.r,
-                          spreadRadius: 10.r,
-                          offset: Offset(0, 20.h),
-                        ),
-                      ],
-                    ),
-                  ),
+            margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    Colors.white.withOpacity(0.12),
+                    Colors.white.withOpacity(0.06),
+                    Colors.white.withOpacity(0.03),
+                  ],
                 ),
-                // Main professional card
-                Container(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withOpacity(0.15),
-                        Colors.white.withOpacity(0.08),
-                        Colors.white.withOpacity(0.05),
-                      ],
-                    ),
-                    borderRadius: BorderRadius.circular(20.r),
-                    border: Border.all(
-                      color: Colors.white.withOpacity(0.15),
-                      width: 1.2,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.2),
-                        blurRadius: 20.r,
-                        offset: Offset(0, 8.h),
-                      ),
-                      BoxShadow(
-                        color: AppColors.primaryPurple.withOpacity(0.1),
-                        blurRadius: 40.r,
-                        offset: Offset(0, 16.h),
-                      ),
-                    ],
+                borderRadius: BorderRadius.circular(14.r),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.15),
+                  width: 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.15),
+                    blurRadius: 12.r,
+                    offset: Offset(0, 4.h),
                   ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(20.r),
-                    child: BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                      child: Container(
-                        padding: EdgeInsets.all(24.r),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              Colors.white.withOpacity(0.12),
-                              Colors.white.withOpacity(0.04),
+                  BoxShadow(
+                    color: AppColors.primaryPurple.withOpacity(0.08),
+                    blurRadius: 20.r,
+                    offset: Offset(0, 8.h),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14.r),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: Container(
+                    padding: EdgeInsets.all(16.r),
+                    child: Row(
+                      children: [
+                        // Compact icon container
+                        Container(
+                          width: 42.w,
+                          height: 42.h,
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(
+                              colors: [
+                                AppColors.primaryPurple.withOpacity(0.8),
+                                AppColors.primaryPink.withOpacity(0.6),
+                              ],
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                            ),
+                            borderRadius: BorderRadius.circular(10.r),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppColors.primaryPurple.withOpacity(
+                                  0.25,
+                                ),
+                                blurRadius: 8.r,
+                                offset: Offset(0, 4.h),
+                              ),
                             ],
                           ),
+                          child: Icon(
+                            _selectedSession != null
+                                ? Icons.video_library_outlined
+                                : Icons.analytics_outlined,
+                            color: Colors.white,
+                            size: 20.sp,
+                          ),
                         ),
-                        child: Column(
-                          children: [
-                            // Header section
-                            Row(
-                              children: [
-                                // Professional icon container
-                                Container(
-                                  width: 64.w,
-                                  height: 64.h,
-                                  decoration: BoxDecoration(
-                                    gradient:
-                                        AppColors.glassBackground != null
-                                            ? LinearGradient(
-                                              colors: [
-                                                AppColors.primaryPurple
-                                                    .withOpacity(0.8),
-                                                AppColors.primaryPink
-                                                    .withOpacity(0.6),
-                                              ],
-                                              begin: Alignment.topLeft,
-                                              end: Alignment.bottomRight,
-                                            )
-                                            : AppColors.accentGradient,
-                                    borderRadius: BorderRadius.circular(16.r),
-                                    boxShadow: [
-                                      BoxShadow(
-                                        color: AppColors.primaryPurple
-                                            .withOpacity(0.3),
-                                        blurRadius: 16.r,
-                                        offset: Offset(0, 8.h),
-                                      ),
-                                    ],
-                                  ),
-                                  child: Icon(
-                                    _selectedSession != null
-                                        ? Icons.video_library_outlined
-                                        : Icons.analytics_outlined,
-                                    color: Colors.white,
-                                    size: 28.sp,
-                                  ),
-                                ),
-                                SizedBox(width: 20.w),
-                                // Title and subtitle
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        _selectedSession != null
-                                            ? 'Session Details'
-                                            : 'Storage Overview',
-                                        style: TextStyle(
-                                          fontSize: 16.sp,
-                                          fontWeight: FontWeight.w500,
-                                          color: Colors.white.withOpacity(0.7),
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                      SizedBox(height: 4.h),
-                                      Text(
-                                        _selectedSession != null
-                                            ? '${_selectedSession!.videos.length} Videos'
-                                            : '$totalSessions Sessions',
-                                        style: TextStyle(
-                                          fontSize: 24.sp,
-                                          fontWeight: FontWeight.w700,
-                                          color: Colors.white,
-                                          letterSpacing: -0.5,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 24.h),
-                            // Stats section
-                            Container(
-                              padding: EdgeInsets.all(20.r),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.05),
-                                borderRadius: BorderRadius.circular(16.r),
-                                border: Border.all(
-                                  color: Colors.white.withOpacity(0.1),
-                                  width: 1,
-                                ),
-                              ),
-                              child: Row(
+                        SizedBox(width: 12.w),
+                        // Content section
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // Title row
+                              Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceBetween,
                                 children: [
-                                  // Left stats
+                                  Text(
+                                    _selectedSession != null
+                                        ? 'Session Details'
+                                        : 'Storage Overview',
+                                    style: TextStyle(
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.white.withOpacity(0.7),
+                                      letterSpacing: 0.3,
+                                    ),
+                                  ),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 8.w,
+                                      vertical: 2.h,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withOpacity(0.1),
+                                      borderRadius: BorderRadius.circular(8.r),
+                                    ),
+                                    child: Text(
+                                      _selectedSession != null
+                                          ? '${_selectedSession!.videos.length} Videos'
+                                          : '$totalSessions Sessions',
+                                      style: TextStyle(
+                                        fontSize: 10.sp,
+                                        fontWeight: FontWeight.w600,
+                                        color: Colors.white.withOpacity(0.8),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 8.h),
+                              // Stats row
+                              Row(
+                                children: [
+                                  // Videos count
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Total Videos',
+                                          'Videos',
                                           style: TextStyle(
-                                            fontSize: 12.sp,
-                                            fontWeight: FontWeight.w500,
+                                            fontSize: 10.sp,
+                                            fontWeight: FontWeight.w400,
                                             color: Colors.white.withOpacity(
                                               0.6,
                                             ),
-                                            letterSpacing: 0.3,
+                                            letterSpacing: 0.2,
                                           ),
                                         ),
-                                        SizedBox(height: 4.h),
+                                        SizedBox(height: 2.h),
                                         Text(
                                           _selectedSession != null
                                               ? '${_selectedSession!.videos.length}'
                                               : '$totalVideos',
                                           style: TextStyle(
-                                            fontSize: 20.sp,
+                                            fontSize: 16.sp,
                                             fontWeight: FontWeight.w600,
                                             color: Colors.white,
                                           ),
@@ -786,37 +985,39 @@ Future<void> _loadAd() async {
                                       ],
                                     ),
                                   ),
-                                  // Divider
+                                  // Compact divider
                                   Container(
                                     width: 1.w,
-                                    height: 40.h,
+                                    height: 28.h,
                                     color: Colors.white.withOpacity(0.15),
+                                    margin: EdgeInsets.symmetric(
+                                      horizontal: 12.w,
+                                    ),
                                   ),
-                                  SizedBox(width: 20.w),
-                                  // Right stats
+                                  // Storage size
                                   Expanded(
                                     child: Column(
                                       crossAxisAlignment:
                                           CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          'Storage Used',
+                                          'Storage',
                                           style: TextStyle(
-                                            fontSize: 12.sp,
-                                            fontWeight: FontWeight.w500,
+                                            fontSize: 10.sp,
+                                            fontWeight: FontWeight.w400,
                                             color: Colors.white.withOpacity(
                                               0.6,
                                             ),
-                                            letterSpacing: 0.3,
+                                            letterSpacing: 0.2,
                                           ),
                                         ),
-                                        SizedBox(height: 4.h),
+                                        SizedBox(height: 2.h),
                                         Text(
                                           _selectedSession != null
                                               ? _selectedSession!.totalSize
                                               : formattedTotalSize,
                                           style: TextStyle(
-                                            fontSize: 20.sp,
+                                            fontSize: 16.sp,
                                             fontWeight: FontWeight.w600,
                                             color: Colors.white,
                                           ),
@@ -826,36 +1027,14 @@ Future<void> _loadAd() async {
                                   ),
                                 ],
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 ),
-                // Top highlight
-                Positioned(
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  child: Container(
-                    height: 1.h,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          Colors.transparent,
-                          Colors.white.withOpacity(0.2),
-                          Colors.transparent,
-                        ],
-                      ),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(20.r),
-                        topRight: Radius.circular(20.r),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1063,32 +1242,35 @@ Future<void> _loadAd() async {
                   ],
                 ),
                 SizedBox(height: 16.h),
-                  _buildEnhancedActionButton(
-          icon: _controller.isBulkDownloading &&
-                  _selectedSession == session
-              ? SizedBox(
-                width: 20.w,
-                height: 20.w,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  valueColor: AlwaysStoppedAnimation<Color>(
-                    Colors.white,
-                  ),
-                ),
-              )
-              : Icon(
-                Icons.download_rounded,
-                size: 20.sp,
-                color: Colors.white,
-              ),
-          label: _controller.isBulkDownloading &&
-                  _selectedSession == session
-              ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
-              : 'Download All Videos',
-          onTap: _controller.isBulkDownloading
-              ? null
-              : () async {
-                  // Show loading dialog
+                _buildEnhancedActionButton(
+                  icon:
+                      _controller.isBulkDownloading &&
+                              _selectedSession == session
+                          ? SizedBox(
+                            width: 20.w,
+                            height: 20.w,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white,
+                              ),
+                            ),
+                          )
+                          : Icon(
+                            Icons.download_rounded,
+                            size: 20.sp,
+                            color: Colors.white,
+                          ),
+                  label:
+                      _controller.isBulkDownloading &&
+                              _selectedSession == session
+                          ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
+                          : 'Download All Videos',
+                  onTap:
+                      _controller.isBulkDownloading
+                          ? null
+                          : () async {
+                            // Show loading dialog
                             showDialog(
                               context: context,
                               barrierDismissible: false,
@@ -1101,13 +1283,14 @@ Future<void> _loadAd() async {
 
                             // Wait 1-2 seconds
                             await Future.delayed(Duration(seconds: 1));
-                   InterstitialAdsController().handleButtonClick(context);
-                  // Then proceed with download
-                  _downloadAllVideosSimple(session);
-                },
-          gradient: AppColors.primaryGradient,
-        ),
-      
+                            InterstitialAdsController().handleButtonClick(
+                              context,
+                            );
+                            // Then proceed with download
+                            _downloadAllVideosSimple(session);
+                          },
+                  gradient: AppColors.primaryGradient,
+                ),
               ],
             ),
           ),
@@ -1252,7 +1435,7 @@ Future<void> _loadAd() async {
     );
   }
 
-Widget _buildActionButton({
+  Widget _buildActionButton({
     required IconData icon,
     required String label,
     required VoidCallback onPressed,
@@ -1281,7 +1464,7 @@ Widget _buildActionButton({
               await Future.delayed(Duration(seconds: 1));
 
               // Show interstitial ad
-             InterstitialAdsController().handleButtonClick(context);
+              InterstitialAdsController().handleButtonClick(context);
 
               // Dismiss loader
               if (Navigator.of(context).canPop()) {
@@ -1315,6 +1498,7 @@ Widget _buildActionButton({
       ),
     );
   }
+
   Widget _buildEnhancedActionButton({
     required Widget icon,
     required String label,
@@ -1550,48 +1734,6 @@ Widget _buildActionButton({
     );
   }
 
-  Widget _buildVideoThumbnail(ProcessedVideo video) {
-    return GestureDetector(
-      onTap: () => _previewVideo(video.path),
-      child: Container(
-        width: 60.w,
-        height: 60.w,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12.r),
-          gradient: AppColors.secondaryGradient,
-          boxShadow: [
-            BoxShadow(
-              color: AppColors.primaryBlue.withOpacity(0.3),
-              blurRadius: 12.r,
-              offset: Offset(0, 4.h),
-            ),
-          ],
-          image:
-              video.thumbnailPath != null
-                  ? DecorationImage(
-                    image: FileImage(File(video.thumbnailPath!)),
-                    fit: BoxFit.cover,
-                  )
-                  : null,
-        ),
-        child:
-            video.thumbnailPath == null
-                ? Icon(
-                  Icons.play_circle_filled,
-                  color: Colors.white,
-                  size: 24.sp,
-                )
-                : Center(
-                  child: Icon(
-                    Icons.play_circle_outline,
-                    color: Colors.white.withOpacity(0.8),
-                    size: 24.sp,
-                  ),
-                ),
-      ),
-    );
-  }
-
   void _previewVideo(String path) {
     Navigator.push(
       context,
@@ -1616,7 +1758,8 @@ Widget _buildActionButton({
       ),
     );
   }
-void preloadNativeAds() {
+
+  void preloadNativeAds() {
     final nativeAdsController = NativeAdsController();
     nativeAdsController.initializeAds().then((_) {
       nativeAdsController.loadNativeAd();
@@ -1624,6 +1767,9 @@ void preloadNativeAds() {
   }
 
 
+
+
+  
 @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1632,126 +1778,10 @@ void preloadNativeAds() {
         child: Column(
           children: [
             _buildGradientAppBar(),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  children: [
-                    _buildEnhancedStorageInfo(),
-                    _buildEnhancedStatusMessage(),
-
-                    // Only show native ad when ready
-                    if (_shouldShowAd)
-                      const NativeAdWidget(
-                        height: 300,
-                        margin: EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                      ),
-
-                    if (_isLoading)
-                      SizedBox(
-                        height: 300.h,
-                        child: _buildEnhancedLoadingState(),
-                      )
-                    else if (_sessions.isEmpty)
-                      SizedBox(height: 400.h, child: _buildEnhancedEmptyState())
-                    else
-                      _buildVideosList(),
-                  ],
-                ),
-              ),
-            ),
+            Expanded(child: _buildRefreshableContent()),
           ],
         ),
       ),
     );
-  }
-}
-
-class VideoPlayerWidget extends StatefulWidget {
-  final String videoPath;
-
-  const VideoPlayerWidget({required this.videoPath});
-
-  @override
-  _VideoPlayerWidgetState createState() => _VideoPlayerWidgetState();
-}
-
-class _VideoPlayerWidgetState extends State<VideoPlayerWidget> {
-  late VideoPlayerController _controller;
-  bool _isPlaying = false;
-  bool _isInitialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _controller = VideoPlayerController.file(File(widget.videoPath))
-      ..initialize().then((_) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = true;
-          });
-          _controller.play();
-          _isPlaying = true;
-        }
-      });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return Center(child: CircularProgressIndicator());
-    }
-
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        AspectRatio(
-          aspectRatio: _controller.value.aspectRatio,
-          child: VideoPlayer(_controller),
-        ),
-        VideoProgressIndicator(
-          _controller,
-          allowScrubbing: true,
-          colors: VideoProgressColors(
-            playedColor: AppColors.primaryBlue,
-            bufferedColor: AppColors.primaryBlue.withOpacity(0.3),
-          ),
-        ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            IconButton(
-              icon: Icon(
-                _isPlaying ? Icons.pause : Icons.play_arrow,
-                size: 32.sp,
-              ),
-              onPressed: () {
-                setState(() {
-                  _isPlaying ? _controller.pause() : _controller.play();
-                  _isPlaying = !_isPlaying;
-                });
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.replay, size: 32.sp),
-              onPressed: () {
-                _controller.seekTo(Duration.zero);
-                _controller.play();
-                setState(() => _isPlaying = true);
-              },
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    
-    super.dispose();
   }
 }

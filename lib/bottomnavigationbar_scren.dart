@@ -1,8 +1,7 @@
 // ignore_for_file: library_private_types_in_public_api, deprecated_member_use
 
 import 'package:auto_clipper_app/Screens/Split_screen.dart';
-import 'package:auto_clipper_app/Screens/for_demo_ads.dart';
-import 'package:auto_clipper_app/Screens/inter_ads_Screen.dart';
+
 import 'package:auto_clipper_app/Screens/video_download_screen.dart';
 import 'package:flutter/material.dart';
 
@@ -32,8 +31,8 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
     // Initialize screens (VideoEditorScreen removed)
     _screens = [
       const VideoSplitterScreen(),
-      NativeAdDemoScreen(),
-      InterstitialAdDemoScreen(),
+      // NativeAdDemoScreen(),
+      // InterstitialAdDemoScreen(),
       VideoDownloadScreen(),
     ];
   }
@@ -110,16 +109,7 @@ class _BottomNavigationScreenState extends State<BottomNavigationScreen>
               activeIcon: Icon(Icons.content_cut, size: 28),
               label: 'Split',
             ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.ad_units),
-              activeIcon: Icon(Icons.ad_units, size: 28),
-              label: 'Ads',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.ad_units),
-              activeIcon: Icon(Icons.ad_units, size: 28),
-              label: 'inter Ads',
-            ),
+
             BottomNavigationBarItem(
               icon: Icon(Icons.download_done_outlined),
               activeIcon: Icon(Icons.download, size: 28),
