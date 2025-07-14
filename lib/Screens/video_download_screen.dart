@@ -182,7 +182,7 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
     }
   }
 
-Widget _buildRefreshableContent() {
+  Widget _buildRefreshableContent() {
     return LayoutBuilder(
       builder: (context, constraints) {
         return RefreshIndicator(
@@ -202,10 +202,13 @@ Widget _buildRefreshableContent() {
                   _buildEnhancedStatusMessage(),
                   _buildAutoRefreshIndicator(),
                   if (_shouldShowAd)
-                    const NativeAdWidget(
-                      height: 300,
-                      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
+                     NativeAdWidget(
+                          height: 100.sp,
+                          margin: EdgeInsets.all(20),
+                          backgroundColor: Colors.white,
+                          showLoadingShimmer: false,
+                        ),
+                    SizedBox(height: 10.sp),
                   if (_isLoading)
                     SizedBox(height: 300.h, child: _buildEnhancedLoadingState())
                   else if (_sessions.isEmpty)
@@ -1270,23 +1273,26 @@ Widget _buildRefreshableContent() {
                       _controller.isBulkDownloading
                           ? null
                           : () async {
-                            // Show loading dialog
-                            showDialog(
-                              context: context,
-                              barrierDismissible: false,
+                            // Set the selected session to show progress indicator
+                            setState(() {
+                              _selectedSession = session;
+                            });
 
-                              builder:
-                                  (context) => Center(
-                                    child: CircularProgressIndicator(),
-                                  ),
-                            );
+                            // Ensure ad is loaded before handling click
+                            if (!InterstitialAdsController().isAdLoaded) {
+                              await InterstitialAdsController()
+                                  .loadInterstitialAd();
+                            }
 
-                            // Wait 1-2 seconds
-                            await Future.delayed(Duration(seconds: 1));
+                            // Handle the button click (this will show ad if threshold is met)
                             InterstitialAdsController().handleButtonClick(
                               context,
                             );
-                            // Then proceed with download
+
+                            // Small delay to allow ad to show if needed
+                            await Future.delayed(Duration(milliseconds: 300));
+
+                            // Start download without showing dialog
                             _downloadAllVideosSimple(session);
                           },
                   gradient: AppColors.primaryGradient,
@@ -1759,18 +1765,20 @@ Widget _buildRefreshableContent() {
     );
   }
 
-  void preloadNativeAds() {
+  Future<void> preloadNativeAds() async {
     final nativeAdsController = NativeAdsController();
-    nativeAdsController.initializeAds().then((_) {
-      nativeAdsController.loadNativeAd();
-    });
+
+    // FIX: Ensure proper initialization sequence
+    await nativeAdsController.initializeAds();
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // FIX: Don't preload, just initialize. Let individual widgets load their own ads
+    if (kDebugMode) {
+      print('✅ Native ads controller preloaded and ready');
+    }
   }
 
-
-
-
-  
-@override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.backgroundColor,

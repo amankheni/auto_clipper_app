@@ -13,16 +13,17 @@ class NativeAdsController {
   bool _isNativeAdReady = false;
   bool _isInitialized = false;
   bool _isLoading = false;
+  bool _isDisposed = false;
 
   // Test ad unit ID for development
   final String _testAdUnitId = 'ca-app-pub-3940256099942544/2247696110';
   // Your production ad unit ID from the image you shared
   final String _productionAdUnitId = 'ca-app-pub-7772180367051787/2949453118';
 
-  bool get isNativeAdReady => _isNativeAdReady;
+  bool get isNativeAdReady => _isNativeAdReady && !_isDisposed;
   bool get isInitialized => _isInitialized;
   bool get isLoading => _isLoading;
-  NativeAd? get nativeAd => _nativeAd;
+  NativeAd? get nativeAd => _isDisposed ? null : _nativeAd;
 
   Future<void> initializeAds() async {
     if (_isInitialized) return;
@@ -42,12 +43,14 @@ class NativeAdsController {
       await Future.delayed(const Duration(seconds: 1));
 
       _isInitialized = true;
+      _isDisposed = false;
     } catch (e) {
       if (kDebugMode) {
         print('NativeAds initialization error: $e');
       }
       // Even if initialization fails, we can try loading ads
       _isInitialized = true;
+      _isDisposed = false;
     }
   }
 
@@ -86,7 +89,6 @@ class NativeAdsController {
     }
   }
 
-  // Update your NativeAdsController's loadNativeAd method
   Future<void> loadNativeAd({
     Function(NativeAd)? onAdLoaded,
     Function(LoadAdError)? onAdFailedToLoad,
@@ -114,11 +116,11 @@ class NativeAdsController {
       return;
     }
 
-    // Dispose existing ad
-    _nativeAd?.dispose();
-    _nativeAd = null;
-    _isNativeAdReady = false;
+    // Properly dispose existing ad before creating new one
+    await _disposeCurrentAd();
+
     _isLoading = true;
+    _isDisposed = false;
 
     if (kDebugMode) {
       print(
@@ -126,160 +128,208 @@ class NativeAdsController {
       );
     }
 
-    _nativeAd = NativeAd(
-      adUnitId: adUnitId,
-      listener: NativeAdListener(
-        onAdLoaded: (ad) {
-          _isNativeAdReady = true;
-          _isLoading = false;
-          if (kDebugMode) {
-            print('✅ Native ad loaded successfully');
-          }
-          onAdLoaded?.call(ad as NativeAd);
-        },
-        onAdFailedToLoad: (ad, error) {
-          _isNativeAdReady = false;
-          _isLoading = false;
-          ad.dispose();
-          _nativeAd = null;
-
-          if (kDebugMode) {
-            print('❌ Native ad failed to load: $error');
-          }
-
-          // Automatic retry logic
-          if (retryCount < maxRetryCount) {
-            if (kDebugMode) {
-              print('🔄 Retrying native ad load...');
-            }
-            Future.delayed(const Duration(seconds: 1), () {
-              loadNativeAd(
-                onAdLoaded: onAdLoaded,
-                onAdFailedToLoad: onAdFailedToLoad,
-                retryCount: retryCount + 1,
-              );
-            });
-          } else {
-            onAdFailedToLoad?.call(error);
-          }
-        },
-      ),
-      request: const AdRequest(),
-      nativeTemplateStyle: NativeTemplateStyle(
-        templateType: TemplateType.small,
-
-        // Enhanced styling to match your app's design
-        cornerRadius: 10.0, // Increased for modern rounded appearance
-        // Main background with subtle elevation feel
-        mainBackgroundColor: const Color(
-          0xFFF8F9FA,
-        ), // Light gray-white background
-        // Call to action button styling (like your INSTALL button)
-        callToActionTextStyle: NativeTemplateTextStyle(
-          textColor: Colors.white,
-          backgroundColor: const Color(
-            0xFF1976D2,
-          ), // Material blue similar to your install button
-          style: NativeTemplateFontStyle.bold,
-          size: 15.0,
-        ),
-
-        // Primary text (app name/title)
-        primaryTextStyle: NativeTemplateTextStyle(
-          textColor: const Color(0xFF1A1A1A), // Dark gray for better contrast
-          backgroundColor: Colors.transparent,
-          style: NativeTemplateFontStyle.bold, // Made bold for better hierarchy
-          size: 17.0, // Slightly larger for prominence
-        ),
-
-        // Secondary text (description)
-        secondaryTextStyle: NativeTemplateTextStyle(
-          textColor: const Color(0xFF6B7280), // Modern gray color
-          backgroundColor: Colors.transparent,
-          style: NativeTemplateFontStyle.normal,
-          size: 14.0,
-        ),
-
-        // Tertiary text (additional info like ratings, etc.)
-        tertiaryTextStyle: NativeTemplateTextStyle(
-          textColor: const Color(
-            0xFF9CA3AF,
-          ), // Lighter gray for less important text
-          backgroundColor: Colors.transparent,
-          style: NativeTemplateFontStyle.normal,
-          size: 12.0,
-        ),
-
-        // Additional customizations for modern look
-        // Note: These may not be available in all versions, adjust as needed
-        /*
-  adLabelTextStyle: NativeTemplateTextStyle(
-    textColor: const Color(0xFF6B7280),
-    backgroundColor: Colors.transparent,
-    style: NativeTemplateFontStyle.normal,
-    size: 10.0,
-  ),
-  
-  // Add subtle border if supported
-  borderColor: const Color(0xFFE5E7EB),
-  borderWidth: 1.0,
-  
-  // Shadow/elevation effect if supported
-  elevation: 2.0,
-  shadowColor: Colors.black12,
-  */
-      ),
-    );
-
     try {
+      _nativeAd = NativeAd(
+        adUnitId: adUnitId,
+        listener: NativeAdListener(
+          onAdLoaded: (ad) {
+            if (_isDisposed) {
+              // If controller was disposed while loading, dispose the ad
+              ad.dispose();
+              return;
+            }
+
+            _isNativeAdReady = true;
+            _isLoading = false;
+            if (kDebugMode) {
+              print('✅ Native ad loaded successfully');
+            }
+            onAdLoaded?.call(ad as NativeAd);
+          },
+          onAdFailedToLoad: (ad, error) {
+            _isNativeAdReady = false;
+            _isLoading = false;
+            ad.dispose();
+            _nativeAd = null;
+
+            if (kDebugMode) {
+              print('❌ Native ad failed to load: $error');
+            }
+
+            // Automatic retry logic with exponential backoff
+            if (retryCount < maxRetryCount && !_isDisposed) {
+              if (kDebugMode) {
+                print(
+                  '🔄 Retrying native ad load in ${(retryCount + 1) * 2} seconds...',
+                );
+              }
+              Future.delayed(Duration(seconds: (retryCount + 1) * 2), () {
+                if (!_isDisposed) {
+                  loadNativeAd(
+                    onAdLoaded: onAdLoaded,
+                    onAdFailedToLoad: onAdFailedToLoad,
+                    retryCount: retryCount + 1,
+                  );
+                }
+              });
+            } else {
+              onAdFailedToLoad?.call(error);
+            }
+          },
+          onAdClicked: (ad) {
+            if (kDebugMode) {
+              print('📱 Native ad clicked');
+            }
+          },
+          onAdImpression: (ad) {
+            if (kDebugMode) {
+              print('👁️ Native ad impression recorded');
+            }
+          },
+          onAdClosed: (ad) {
+            if (kDebugMode) {
+              print('❌ Native ad closed');
+            }
+          },
+          onAdOpened: (ad) {
+            if (kDebugMode) {
+              print('📖 Native ad opened');
+            }
+          },
+        ),
+        request: const AdRequest(),
+       nativeTemplateStyle: NativeTemplateStyle(
+          templateType: TemplateType.small,
+          cornerRadius: 15.0,
+          mainBackgroundColor: Colors.white,
+          callToActionTextStyle: NativeTemplateTextStyle(
+            textColor: Colors.white,
+            backgroundColor: const Color(0xFFE91E63), // Pink accent color
+            style: NativeTemplateFontStyle.bold,
+            size: 16.0,
+          ),
+          primaryTextStyle: NativeTemplateTextStyle(
+            textColor: const Color(0xFF1A1A1A), // Dark text
+            backgroundColor: Colors.transparent,
+            style: NativeTemplateFontStyle.bold,
+            size: 18.0,
+          ),
+          secondaryTextStyle: NativeTemplateTextStyle(
+            textColor: const Color(0xFF6B7280), // Medium gray
+            backgroundColor: Colors.transparent,
+            style: NativeTemplateFontStyle.normal,
+            size: 15.0,
+          ),
+          tertiaryTextStyle: NativeTemplateTextStyle(
+            textColor: const Color(0xFF9CA3AF), // Light gray
+            backgroundColor: Colors.transparent,
+            style: NativeTemplateFontStyle.normal,
+            size: 13.0,
+          ),
+        ),
+      );
+
       await _nativeAd!.load();
     } catch (e) {
       _isNativeAdReady = false;
       _isLoading = false;
-      _nativeAd?.dispose();
-      _nativeAd = null;
+      await _disposeCurrentAd();
 
       if (kDebugMode) {
         print('💥 Exception during native ad loading: $e');
       }
 
-      if (retryCount < maxRetryCount) {
-        Future.delayed(const Duration(seconds: 1), () {
-          loadNativeAd(
-            onAdLoaded: onAdLoaded,
-            onAdFailedToLoad: onAdFailedToLoad,
-            retryCount: retryCount + 1,
-          );
+      // Retry with exponential backoff
+      if (retryCount < maxRetryCount && !_isDisposed) {
+        Future.delayed(Duration(seconds: (retryCount + 1) * 2), () {
+          if (!_isDisposed) {
+            loadNativeAd(
+              onAdLoaded: onAdLoaded,
+              onAdFailedToLoad: onAdFailedToLoad,
+              retryCount: retryCount + 1,
+            );
+          }
         });
       }
     }
+  }
+
+  // Helper method to properly dispose current ad
+  Future<void> _disposeCurrentAd() async {
+    if (_nativeAd != null) {
+      try {
+        _nativeAd!.dispose();
+        if (kDebugMode) {
+          print('🗑️ Previous native ad disposed');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          print('⚠️ Error disposing previous ad: $e');
+        }
+      }
+      _nativeAd = null;
+    }
+    _isNativeAdReady = false;
   }
 
   void dispose() {
     if (kDebugMode) {
       print('🗑️ Disposing NativeAdsController');
     }
+    _isDisposed = true;
+    _isLoading = false;
+    _isNativeAdReady = false;
     _nativeAd?.dispose();
     _nativeAd = null;
-    _isNativeAdReady = false;
-    _isLoading = false;
     _isInitialized = false;
   }
 
-  // Add this method to your NativeAdsController class
-  Future<void> forceReload() async {
-    if (_isLoading) return;
+  // Update the forceReload method in NativeAdsController
+  Future<void> forceReload({
+    Function(NativeAd)? onAdLoaded,
+    Function(LoadAdError)? onAdFailedToLoad,
+  }) async {
+    if (kDebugMode) {
+      print('🔄 Force reloading native ad...');
+    }
 
-    // Dispose existing ad first
-    _nativeAd?.dispose();
-    _nativeAd = null;
-    _isNativeAdReady = false;
+    // Reset all states
     _isLoading = false;
+    _isNativeAdReady = false;
+    _isDisposed = false;
 
-    // Add a small delay
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Properly dispose existing ad first
+    await _disposeCurrentAd();
 
-    // Load new ad
-    await loadNativeAd();
+    // Add a longer delay to ensure proper cleanup
+    await Future.delayed(const Duration(milliseconds: 1000));
+
+    // Load new ad with reset retry count
+    await loadNativeAd(
+      onAdLoaded: onAdLoaded,
+      onAdFailedToLoad: onAdFailedToLoad,
+      retryCount: 0, // Reset retry count
+    );
+  }
+
+  // Method to check if ad is still valid
+  bool isAdValid() {
+    return _isNativeAdReady && !_isDisposed && _nativeAd != null;
+  }
+
+  // Method to refresh ad after a certain time
+  Future<void> refreshAdIfNeeded({
+    Duration refreshInterval = const Duration(minutes: 5),
+    Function(NativeAd)? onAdLoaded,
+    Function(LoadAdError)? onAdFailedToLoad,
+  }) async {
+    // This method can be called periodically to refresh ads
+    // You can store the last load time and compare it
+    if (!isAdValid()) {
+      await loadNativeAd(
+        onAdLoaded: onAdLoaded,
+        onAdFailedToLoad: onAdFailedToLoad,
+      );
+    }
   }
 }

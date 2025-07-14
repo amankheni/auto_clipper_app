@@ -1,5 +1,5 @@
 // video_splitter_screen.dart
-// ignore_for_file: avoid_print, depend_on_referenced_packages, deprecated_member_use
+// ignore_for_file: avoid_print, depend_on_referenced_packages, deprecated_member_use, file_names
 
 import 'dart:io';
 import 'dart:math';
@@ -60,7 +60,9 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
     _requestPermissions();
     _setupAnimations();
+   // _initializeAndLoadAd();
   }
+
 
   void _setupAnimations() {
     _pulseController = AnimationController(
@@ -255,9 +257,11 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
                       SizedBox(height: 24.h),
                       _buildDurationInput(),
-                      const NativeAdWidget(
-                        height: 80,
-                        margin: EdgeInsets.all(16),
+                    NativeAdWidget(
+                        height: 100.sp,
+                        margin: EdgeInsets.all(20),
+                        backgroundColor: Colors.white,
+                        showLoadingShimmer: false,
                       ),
                       // SizedBox(height: 10.h),
                       _buildWatermarkSection(),

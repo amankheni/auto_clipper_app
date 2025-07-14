@@ -22,13 +22,13 @@ class InterstitialAdsController {
   // Test ad unit ID for development
   final String _testAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
   // Your production ad unit ID
-  final String _productionAdUnitId = 'ca-app-pub-7772180367051787/1234567890';
+  final String _productionAdUnitId = 'ca-app-pub-7772180367051787/7636645925';
 
   bool get isAdLoaded => _isAdLoaded;
   bool get isInitialized => _isInitialized;
   bool get isLoading => _isLoading;
 
-  Future<void> initialize() async {
+Future<void> initialize() async {
     if (_isInitialized) return;
 
     try {
@@ -38,44 +38,45 @@ class InterstitialAdsController {
       // Initialize Mobile Ads SDK
       await MobileAds.instance.initialize();
 
-      // Get the click threshold from RemoteConfig
-      _showAfterClicks = FirebaseRemoteConfig.instance.getInt(
-        'interstitial_click_threshold',
-      );
+      // Get the click threshold from RemoteConfig using the service
+      _showAfterClicks = RemoteConfigService().interstitialClickThreshold;
 
       _isInitialized = true;
+
+      if (kDebugMode) {
+        print(
+          '🎯 Interstitial ads initialized with click threshold: $_showAfterClicks',
+        );
+      }
     } catch (e) {
       if (kDebugMode) {
         print('InterstitialAds initialization error: $e');
       }
-      _isInitialized = true; // Allow fallback to test ads
+      _isInitialized = true;
     }
   }
 
+
   String _getAdUnitId() {
     try {
-      final remoteConfig = FirebaseRemoteConfig.instance;
-      final adsEnabled = remoteConfig.getBool('interstitial_ads_enabled');
+      final remoteConfigService = RemoteConfigService();
 
-      if (!adsEnabled) {
+      // Check if ads are enabled globally and interstitial ads specifically
+      if (!remoteConfigService.adsEnabled ||
+          !remoteConfigService.interstitialAdsEnabled) {
         if (kDebugMode) {
           print('❌ Interstitial ads disabled via Remote Config');
         }
         return '';
       }
 
-      final useAccount1 = remoteConfig.getBool('use_interstitial_ad_account_1');
-      String adUnitId =
-          useAccount1
-              ? remoteConfig.getString('interstitial_ad_unit_id_1')
-              : remoteConfig.getString('interstitial_ad_unit_id_2');
-
-      if (adUnitId.isEmpty) {
-        adUnitId = kDebugMode ? _testAdUnitId : _productionAdUnitId;
-      }
+      // Get the ad unit ID from RemoteConfig service
+      String adUnitId = remoteConfigService.interstitialAdUnitId;
 
       if (kDebugMode) {
         print('🎯 Selected interstitial ad unit ID: $adUnitId');
+        print('🎯 Test mode: ${remoteConfigService.adsTestMode}');
+        print('🎯 Debug mode: $kDebugMode');
       }
 
       return adUnitId;

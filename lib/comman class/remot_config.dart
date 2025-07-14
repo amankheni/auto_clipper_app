@@ -47,7 +47,7 @@
               'ca-app-pub-7772180367051787/1234567890',
           'interstitial_ad_unit_id_test':
               'ca-app-pub-3940256099942544/1033173712',
-          'interstitial_click_threshold': 3,
+          'interstitial_click_threshold': 1,
 
           // Open App Ads - Enhanced Configuration
           'open_app_ads_enabled': true,
