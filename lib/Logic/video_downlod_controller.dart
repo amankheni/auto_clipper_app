@@ -1,9 +1,8 @@
-// ignore_for_file: avoid_print
+// ignore_for_file: avoid_print, deprecated_member_use, unused_local_variable, depend_on_referenced_packages
 
 import 'dart:io';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -90,38 +89,24 @@ class VideoDownloadController {
     return 0;
   }
 
-// Corrected downloadToGallery method
-  Future<String> downloadToGallery(String videoPath) async {
+Future<String> downloadToGallery(String videoPath) async {
     try {
-      // Check permissions
-      if (Platform.isAndroid) {
-        final androidInfo = await DeviceInfoPlugin().androidInfo;
-        if (androidInfo.version.sdkInt >= 30) {
-          if (!await Permission.manageExternalStorage.isGranted) {
-            return 'Manage external storage permission required';
-          }
-        }
-      }
-
       final file = File(videoPath);
       if (!await file.exists()) {
         return 'Video file not found';
       }
 
-      final fileName = path.basename(videoPath);
-      final downloadsDir = await getDownloadsDirectory();
-      final destinationPath = '${downloadsDir?.path}/$fileName';
+      // Remove permission check and use GallerySaver directly like in bulk download
+      final result = await GallerySaver.saveVideo(
+        videoPath,
+        albumName: "Auto Clipper",
+      );
 
-      await file.copy(destinationPath);
-
-      if (Platform.isAndroid) {
-        await GallerySaver.saveVideo(
-          destinationPath,
-          albumName: "Auto Clipper",
-        );
+      if (result == true) {
+        return 'Video downloaded successfully!';
+      } else {
+        return 'Failed to download video to gallery';
       }
-
-      return 'Video downloaded successfully!';
     } catch (e) {
       return 'Failed to download video: ${e.toString()}';
     }
@@ -147,7 +132,7 @@ class VideoDownloadController {
       try {
         final result = await GallerySaver.saveVideo(
           video.path,
-          albumName: "Auto Clipper",
+          albumName: "Video Clipper",
         );
 
         if (result == true) {

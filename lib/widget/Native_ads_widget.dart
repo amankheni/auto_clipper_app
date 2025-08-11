@@ -1,4 +1,4 @@
-// ignore_for_file: file_names
+// ignore_for_file: file_names, deprecated_member_use
 
 import 'package:auto_clipper_app/Logic/Nativ_controller.dart';
 import 'package:flutter/foundation.dart';
@@ -39,7 +39,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
   late AnimationController _animationController;
   late Animation<double> _shimmerAnimation;
 
-    @override
+  @override
   void initState() {
     super.initState();
 
@@ -57,23 +57,19 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
       _animationController.repeat();
     }
 
-    // FIX: Initialize properly with longer delay
+    // Initialize properly with longer delay
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      await Future.delayed(
-        const Duration(milliseconds: 1000),
-      ); // Increased delay
+      await Future.delayed(const Duration(milliseconds: 1000));
       if (mounted) {
         _initializeAndLoadAd();
       }
     });
   }
 
-
-   @override
+  @override
   void dispose() {
     _timeoutTimer?.cancel();
     _animationController.dispose();
-    // FIX: Don't dispose the singleton controller here
     super.dispose();
   }
 
@@ -81,7 +77,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
     if (!mounted) return;
 
     try {
-      // Force reinitialize the controller to ensure clean state
       _controller.dispose();
       await Future.delayed(const Duration(milliseconds: 300));
 
@@ -102,7 +97,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
     }
   }
 
- Future<void> _loadAd() async {
+  Future<void> _loadAd() async {
     if (!mounted) return;
 
     if (kDebugMode) {
@@ -120,10 +115,8 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
       _animationController.repeat();
     }
 
-    // FIX: Force reload to ensure fresh ad
     _timeoutTimer?.cancel();
     _timeoutTimer = Timer(const Duration(seconds: 15), () {
-      // Increased timeout
       if (mounted && _isLoading) {
         _animationController.stop();
         setState(() {
@@ -135,7 +128,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
     });
 
     try {
-      // FIX: Use forceReload instead of loadNativeAd for subsequent loads
       await _controller.forceReload(
         onAdLoaded: (ad) {
           _timeoutTimer?.cancel();
@@ -177,16 +169,9 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
   }
 
   BoxDecoration get _defaultDecoration => BoxDecoration(
-    color: widget.backgroundColor ?? const Color(0xFFF8F9FA),
-    borderRadius: const BorderRadius.all(Radius.circular(16)),
-    border: Border.all(color: const Color(0xFFE5E7EB), width: 1),
-    boxShadow: [
-      BoxShadow(
-        color: Colors.black.withOpacity(0.04),
-        blurRadius: 8,
-        offset: const Offset(0, 2),
-      ),
-    ],
+    color: widget.backgroundColor ?? Colors.white,
+
+    borderRadius: BorderRadius.circular(20.sp), // Added .sp
   );
 
   Widget _buildShimmerEffect() {
@@ -195,10 +180,15 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
       builder: (context, child) {
         return Container(
           decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20.sp), // Added .sp
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Colors.grey[300]!, Colors.grey[100]!, Colors.grey[300]!],
+              colors: [
+                const Color(0xFFE91E63).withOpacity(0.1),
+                const Color(0xFFE91E63).withOpacity(0.05),
+                const Color(0xFFE91E63).withOpacity(0.1),
+              ],
               stops:
                   [
                     _shimmerAnimation.value - 0.3,
@@ -211,7 +201,7 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
         );
       },
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.all(16.sp), // Added .sp
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -219,33 +209,37 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
             Row(
               children: [
                 Container(
-                  width: 40,
-                  height: 40,
+                  width: 40.sp, // Added .sp
+                  height: 40.sp, // Added .sp
                   decoration: BoxDecoration(
-                    color: Colors.grey[400],
-                    borderRadius: BorderRadius.circular(8),
+                    color: const Color(0xFFE91E63).withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(8.sp), // Added .sp
                   ),
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12.sp), // Added .sp
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
-                        height: 16,
+                        height: 16.sp, // Added .sp
                         width: double.infinity,
                         decoration: BoxDecoration(
-                          color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFFE91E63).withOpacity(0.3),
+                          borderRadius: BorderRadius.circular(
+                            4.sp,
+                          ), // Added .sp
                         ),
                       ),
-                      const SizedBox(height: 8),
+                      SizedBox(height: 8.sp), // Added .sp
                       Container(
-                        height: 12,
-                        width: 120,
+                        height: 12.sp, // Added .sp
+                        width: 120.sp, // Added .sp
                         decoration: BoxDecoration(
-                          color: Colors.grey[400],
-                          borderRadius: BorderRadius.circular(4),
+                          color: const Color(0xFFE91E63).withOpacity(0.2),
+                          borderRadius: BorderRadius.circular(
+                            4.sp,
+                          ), // Added .sp
                         ),
                       ),
                     ],
@@ -253,33 +247,33 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: 16.sp), // Added .sp
             // Description placeholder
             Container(
-              height: 12,
+              height: 12.sp, // Added .sp
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(4),
+                color: const Color(0xFFE91E63).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4.sp), // Added .sp
               ),
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: 8.sp), // Added .sp
             Container(
-              height: 12,
-              width: 200,
+              height: 12.sp, // Added .sp
+              width: 200.sp, // Added .sp
               decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(4),
+                color: const Color(0xFFE91E63).withOpacity(0.2),
+                borderRadius: BorderRadius.circular(4.sp), // Added .sp
               ),
             ),
             const Spacer(),
             // Install button placeholder
             Container(
-              height: 40,
+              height: 40.sp, // Added .sp
               width: double.infinity,
               decoration: BoxDecoration(
-                color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(8),
+                color: const Color(0xFFE91E63).withOpacity(0.3),
+                borderRadius: BorderRadius.circular(8.sp), // Added .sp
               ),
             ),
           ],
@@ -293,31 +287,28 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
       return _buildShimmerEffect();
     }
 
-    return Container(
-      decoration: _defaultDecoration,
-      child: const Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: CircularProgressIndicator(
-                strokeWidth: 2,
-                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1976D2)),
-              ),
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            width: 24.sp, // Added .sp
+            height: 24.sp, // Added .sp
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE91E63)),
             ),
-            SizedBox(height: 12),
-            Text(
-              'Loading Ad...',
-              style: TextStyle(
-                color: Color(0xFF6B7280),
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-              ),
+          ),
+          SizedBox(height: 12.sp), // Added .sp
+          Text(
+            'Loading Ad...',
+            style: TextStyle(
+              color: const Color(0xFF6B7280),
+              fontSize: 14.sp, // Added .sp
+              fontWeight: FontWeight.w500,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -327,78 +318,74 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
       return const SizedBox.shrink();
     }
 
-    return Container(
-      height: widget.height ?? 120.sp,
-      decoration: BoxDecoration(
-        color: const Color(0xFFFEF2F2),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: const Color(0xFFEF4444).withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        child: Row(
-          children: [
-            // Error icon with circular background
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEF4444).withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.error_outline,
-                color: Color(0xFFEF4444),
-                size: 20,
-              ),
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: 16.sp,
+        vertical: 12.sp,
+      ), // Added .sp
+      child: Row(
+        children: [
+          // Error icon with circular background
+          Container(
+            width: 36.sp, // Added .sp
+            height: 36.sp, // Added .sp
+            decoration: BoxDecoration(
+              color: const Color(0xFFE91E63).withOpacity(0.1),
+              shape: BoxShape.circle,
             ),
-            const SizedBox(width: 12),
+            child: Icon(
+              Icons.error_outline,
+              color: const Color(0xFFE91E63),
+              size: 20.sp, // Added .sp
+            ),
+          ),
+          SizedBox(width: 12.sp), // Added .sp
+          // Text content
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Main error title
+                Text(
+                  'Ad Failed to Load',
+                  style: TextStyle(
+                    color: const Color(0xFFE91E63),
+                    fontSize: 14.sp, // Added .sp
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
 
-            // Text content
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  // Main error title
-                  const Text(
-                    'Ad Failed to Load',
-                    style: TextStyle(
-                      color: Color(0xFFEF4444),
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                // Error message subtitle
+                if (_errorMessage.isNotEmpty)
+                  Padding(
+                    padding: EdgeInsets.only(top: 2.sp), // Added .sp
+                    child: Text(
+                      _errorMessage,
+                      style: TextStyle(
+                        color: const Color(0xFF9CA3AF),
+                        fontSize: 11.sp, // Added .sp
+                        fontWeight: FontWeight.w400,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ),
-
-                  // Error message subtitle
-                  if (_errorMessage.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        _errorMessage,
-                        style: const TextStyle(
-                          color: Color(0xFF9CA3AF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w400,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                ],
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  @override
+@override
   Widget build(BuildContext context) {
+    // Return only SizedBox with height 1 when there's an error or no ad loaded
+    if ((_hasError || _controller.nativeAd == null) && !_isLoading) {
+      return const SizedBox(height: 1);
+    }
+
     final decoration = widget.decoration ?? _defaultDecoration;
 
     return Container(
@@ -412,10 +399,6 @@ class _NativeAdWidgetState extends State<NativeAdWidget>
         child:
             _isLoading
                 ? _buildLoadingState()
-                : _hasError ||
-                    !_controller.isNativeAdReady ||
-                    _controller.nativeAd == null
-                ? _buildErrorState()
                 : AdWidget(ad: _controller.nativeAd!),
       ),
     );

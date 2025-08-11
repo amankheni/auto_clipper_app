@@ -30,7 +30,7 @@
           'banner_ads_enabled': true,
           'banner_ad_unit_id_production':
               'ca-app-pub-7772180367051787/8438591704',
-          'banner_ad_unit_id_test': 'ca-app-pub-3940256099942544/2247696110',
+          'banner_ad_unit_id_test': '',
           'banner_ad_refresh_rate': 60,
 
           // Native
@@ -44,7 +44,7 @@
           // Interstitial
           'interstitial_ads_enabled': true,
           'interstitial_ad_unit_id_production':
-              'ca-app-pub-7772180367051787/1234567890',
+              'ca-app-pub-7772180367051787/7636645925',
           'interstitial_ad_unit_id_test':
               'ca-app-pub-3940256099942544/1033173712',
           'interstitial_click_threshold': 1,

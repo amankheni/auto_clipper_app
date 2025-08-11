@@ -1,3 +1,5 @@
+// ignore_for_file: file_names
+
 import 'package:auto_clipper_app/Logic/open_app_ads_controller.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';

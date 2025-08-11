@@ -1,4 +1,6 @@
 // colors.dart
+// ignore_for_file: file_names
+
 import 'package:flutter/material.dart';
 class AppColors {
   // Primary gradient colors inspired by the scissors logo

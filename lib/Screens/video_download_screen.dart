@@ -8,6 +8,7 @@ import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
 import 'package:auto_clipper_app/Logic/Nativ_controller.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
+import 'package:auto_clipper_app/Screens/VideoSessionDetailScreen.dart';
 import 'package:auto_clipper_app/Screens/Video_player_screen.dart';
 import 'package:auto_clipper_app/comman%20class/remot_config.dart';
 import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
@@ -16,7 +17,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:video_player/video_player.dart';
 
 class VideoDownloadScreen extends StatefulWidget {
   const VideoDownloadScreen({super.key, this.preserveStateKey});
@@ -42,7 +42,7 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   bool _isAdLoading = false; // Corrected typo from _isAdvLoading
   bool _shouldShowAd = false;
   Timer? _refreshTimer;
-  bool _isAutoRefreshEnabled = true;
+  final bool _isAutoRefreshEnabled = true;
   DateTime? _lastRefreshTime;
 
   @override
@@ -80,11 +80,11 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
 
-    // Re-initialize and load ad if controller was disposed
-    if (!_nativeAdsController.isInitialized || _hasError) {
-      Future.delayed(const Duration(milliseconds: 500), () {
+    // Only reload if we're returning from navigation and ads failed
+    if (_hasError || (_shouldShowAd && !_nativeAdsController.isInitialized)) {
+      Future.delayed(const Duration(milliseconds: 800), () {
         if (mounted) {
-          _loadAd();
+          _reinitializeAds();
         }
       });
     }
@@ -92,19 +92,20 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
 
   // Correct lifecycle method name
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    //super.didChangeAppLifecycleState(state); // Note the correct capitalization
-
     switch (state) {
       case AppLifecycleState.resumed:
-        // App came to foreground, start auto-refresh
         _startAutoRefresh();
-        // Immediately refresh to catch any changes
         Future.delayed(Duration(milliseconds: 500), () {
-          if (mounted) _refreshVideoSessions();
+          if (mounted) {
+            _refreshVideoSessions();
+            // Reload ad if it failed previously
+            if (_hasError && _shouldShowAd) {
+              _reinitializeAds();
+            }
+          }
         });
         break;
       case AppLifecycleState.paused:
-        // App went to background, stop auto-refresh to save battery
         _stopAutoRefresh();
         break;
       default:
@@ -114,9 +115,90 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
 
   @override
   void dispose() {
-    _stopAutoRefresh(); // Stop auto-refresh
+    _stopAutoRefresh();
     _animationController.dispose();
+
+    // Properly dispose native ads controller
+    if (_nativeAdsController.isInitialized) {
+      _nativeAdsController.dispose();
+    }
+
     super.dispose();
+  }
+
+  Future<void> _reinitializeAds() async {
+    if (!mounted) return;
+
+    try {
+      setState(() {
+        _isAdLoading = true;
+        _hasError = false;
+      });
+
+      // Dispose existing controller if needed
+      if (_nativeAdsController.isInitialized) {
+        _nativeAdsController.dispose();
+      }
+
+      // Wait before reinitializing
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      if (!mounted) return;
+
+      // Reinitialize completely
+      await _nativeAdsController.initializeAds();
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      if (mounted) {
+        _loadAd();
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('Ad reinitialization error: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _isAdLoading = false;
+          _hasError = true;
+        });
+      }
+    }
+  }
+
+  Widget _buildNativeAdSection() {
+    // Don't show container if ads should not be displayed OR if there's an error
+    if (!_shouldShowAd || _hasError) return SizedBox.shrink();
+
+    return Container(
+      margin: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
+      child:
+          _isAdLoading
+              ? Container(
+                height: 100.sp,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.grey[200],
+                ),
+                child: Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      AppColors.primaryBlue,
+                    ),
+                  ),
+                ),
+              )
+              : NativeAdWidget(
+                height: 100.sp,
+                width: double.infinity,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(20),
+                  color: Colors.white,
+                ),
+                margin: EdgeInsets.all(0),
+                backgroundColor: Colors.white,
+                showLoadingShimmer: false,
+              ),
+    );
   }
 
   // Add this method to your _VideoDownloadScreenState class
@@ -201,14 +283,11 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
                   _buildEnhancedStorageInfo(),
                   _buildEnhancedStatusMessage(),
                   _buildAutoRefreshIndicator(),
-                  if (_shouldShowAd)
-                     NativeAdWidget(
-                          height: 100.sp,
-                          margin: EdgeInsets.all(20),
-                          backgroundColor: Colors.white,
-                          showLoadingShimmer: false,
-                        ),
-                    SizedBox(height: 10.sp),
+                  // Remove this entire section that shows "Ad Failed to Load"
+                  // if (_shouldShowAd)
+                  //   NativeAdWidget(...),
+                  _buildNativeAdSection(), // This handles showing/hiding automatically
+                  SizedBox(height: 10.sp),
                   if (_isLoading)
                     SizedBox(height: 300.h, child: _buildEnhancedLoadingState())
                   else if (_sessions.isEmpty)
@@ -235,65 +314,11 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
 
     if (nextRefreshIn.isNegative) return SizedBox.shrink();
     return Container();
-    // return Container(
-    //   margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 8.h),
-    //   padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-    //   decoration: BoxDecoration(
-    //     color: AppColors.primaryBlue.withOpacity(0.1),
-    //     borderRadius: BorderRadius.circular(12.r),
-    //     border: Border.all(
-    //       color: AppColors.primaryBlue.withOpacity(0.3),
-    //       width: 1,
-    //     ),
-    //   ),
-    //   child: Row(
-    //     mainAxisSize: MainAxisSize.min,
-    //     children: [
-    //       SizedBox(
-    //         width: 12.w,
-    //         height: 12.w,
-    //         child: CircularProgressIndicator(
-    //           strokeWidth: 1.5,
-    //           valueColor: AlwaysStoppedAnimation<Color>(AppColors.primaryBlue),
-    //         ),
-    //       ),
-    //       SizedBox(width: 8.w),
-    //       Text(
-    //         'Auto-refreshing...',
-    //         style: TextStyle(
-    //           fontSize: 11.sp,
-    //           color: AppColors.primaryBlue,
-    //           fontWeight: FontWeight.w500,
-    //         ),
-    //       ),
-    //       SizedBox(width: 8.w),
-    //       GestureDetector(
-    //         onTap: () {
-    //           setState(() {
-    //             _isAutoRefreshEnabled = !_isAutoRefreshEnabled;
-    //           });
-    //           if (_isAutoRefreshEnabled) {
-    //             _startAutoRefresh();
-    //           } else {
-    //             _stopAutoRefresh();
-    //           }
-    //         },
-    //         child: Icon(
-    //           _isAutoRefreshEnabled ? Icons.pause_circle : Icons.play_circle,
-    //           size: 16.sp,
-    //           color: AppColors.primaryBlue,
-    //         ),
-    //       ),
-    //     ],
-    //   ),
-    // );
   }
-  // Correct lifecycle method name
 
   Future<void> _initializeAndLoadAd() async {
     try {
       // Ensure remote config is ready
-      final remoteConfig = RemoteConfigService();
 
       // Initialize ads controller
       await _nativeAdsController.initializeAds();
@@ -335,11 +360,13 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
     });
 
     try {
-      // Double-check initialization
+      // Ensure controller is properly initialized
       if (!_nativeAdsController.isInitialized) {
         await _nativeAdsController.initializeAds();
-        await Future.delayed(const Duration(milliseconds: 500));
+        await Future.delayed(const Duration(milliseconds: 800));
       }
+
+      if (!mounted) return;
 
       await _nativeAdsController.loadNativeAd(
         onAdLoaded: (ad) {
@@ -348,18 +375,34 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
               _isAdLoading = false;
               _hasError = false;
             });
+            if (kDebugMode) {
+              print('✅ Native ad loaded successfully');
+            }
           }
         },
         onAdFailedToLoad: (error) {
+          if (kDebugMode) {
+            print('❌ Native ad failed to load: $error');
+          }
           if (mounted) {
             setState(() {
               _isAdLoading = false;
               _hasError = true;
             });
+
+            // Retry after delay
+            Future.delayed(const Duration(seconds: 3), () {
+              if (mounted && _hasError) {
+                _loadAd();
+              }
+            });
           }
         },
       );
     } catch (e) {
+      if (kDebugMode) {
+        print('❌ Load ad exception: $e');
+      }
       if (mounted) {
         setState(() {
           _isAdLoading = false;
@@ -1164,9 +1207,14 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
         color: Colors.transparent,
         child: InkWell(
           onTap: () {
-            setState(() {
-              _selectedSession = session;
-            });
+            // CHANGE: Navigate to new screen instead of setting state
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder:
+                    (context) => VideoSessionDetailScreen(session: session),
+              ),
+            );
           },
           borderRadius: BorderRadius.circular(20.r),
           child: Padding(
@@ -1306,36 +1354,40 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
   }
 
   Widget _buildVideosList() {
-    if (_selectedSession == null) return _buildSessionsList();
-
-    return ListView.builder(
-      shrinkWrap: true, // Add this
-      physics: NeverScrollableScrollPhysics(), // Add this
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
-      itemCount: _selectedSession!.videos.length,
-      itemBuilder: (context, index) {
-        return SlideTransition(
-          position: Tween<Offset>(
-            begin: Offset(0, 0.1),
-            end: Offset.zero,
-          ).animate(
-            CurvedAnimation(
-              parent: _animationController,
-              curve: Interval(
-                (index * 0.05).clamp(0.0, 1.0),
-                1.0,
-                curve: Curves.easeOutCubic,
-              ),
-            ),
-          ),
-          child: FadeTransition(
-            opacity: _fadeAnimation,
-            child: _buildEnhancedVideoItem(_selectedSession!.videos[index]),
-          ),
-        );
-      },
-    );
+    return _buildSessionsList(); // Always show sessions list
   }
+
+  // Widget _buildVideosList() {
+  //   if (_selectedSession == null) return _buildSessionsList();
+
+  //   return ListView.builder(
+  //     shrinkWrap: true, // Add this
+  //     physics: NeverScrollableScrollPhysics(), // Add this
+  //     padding: EdgeInsets.symmetric(horizontal: 20.w),
+  //     itemCount: _selectedSession!.videos.length,
+  //     itemBuilder: (context, index) {
+  //       return SlideTransition(
+  //         position: Tween<Offset>(
+  //           begin: Offset(0, 0.1),
+  //           end: Offset.zero,
+  //         ).animate(
+  //           CurvedAnimation(
+  //             parent: _animationController,
+  //             curve: Interval(
+  //               (index * 0.05).clamp(0.0, 1.0),
+  //               1.0,
+  //               curve: Curves.easeOutCubic,
+  //             ),
+  //           ),
+  //         ),
+  //         child: FadeTransition(
+  //           opacity: _fadeAnimation,
+  //           child: _buildEnhancedVideoItem(_selectedSession!.videos[index]),
+  //         ),
+  //       );
+  //     },
+  //   );
+  // }
 
   Widget _buildEnhancedVideoItem(ProcessedVideo video) {
     return Container(

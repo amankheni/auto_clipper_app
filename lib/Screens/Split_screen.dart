@@ -60,9 +60,8 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
     );
     _requestPermissions();
     _setupAnimations();
-   // _initializeAndLoadAd();
+    // _initializeAndLoadAd();
   }
-
 
   void _setupAnimations() {
     _pulseController = AnimationController(
@@ -257,13 +256,19 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
 
                       SizedBox(height: 24.h),
                       _buildDurationInput(),
-                    NativeAdWidget(
+                      SizedBox(height: 10.h),
+                      NativeAdWidget(
                         height: 100.sp,
-                        margin: EdgeInsets.all(20),
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(20),
+                          color: Colors.white,
+                        ),
+                        margin: EdgeInsets.all(0),
                         backgroundColor: Colors.white,
                         showLoadingShimmer: false,
                       ),
-                      // SizedBox(height: 10.h),
+                      SizedBox(height: 10.h),
                       _buildWatermarkSection(),
                       SizedBox(height: 10.h),
                       _buildNavigationSection(),
@@ -359,7 +364,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  'Auto Clipper',
+                  'Video Clipper',
                   style: TextStyle(
                     fontSize: 19.sp,
                     fontWeight: FontWeight.w700,
@@ -424,50 +429,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
             ),
           ],
 
-          // Status indicator when not processing
-          // if (!_isProcessing) ...[
-          //   SizedBox(width: 8.w),
-          //   Container(
-          //     padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 4.h),
-          //     decoration: BoxDecoration(
-          //       color: Colors.white.withOpacity(0.15),
-          //       borderRadius: BorderRadius.circular(8.r),
-          //       border: Border.all(
-          //         color: Colors.white.withOpacity(0.2),
-          //         width: 0.5,
-          //       ),
-          //     ),
-          //     child: Row(
-          //       mainAxisSize: MainAxisSize.min,
-          //       children: [
-          //         Container(
-          //           width: 6.w,
-          //           height: 6.h,
-          //           decoration: BoxDecoration(
-          //             color: Colors.greenAccent,
-          //             borderRadius: BorderRadius.circular(3.r),
-          //             boxShadow: [
-          //               BoxShadow(
-          //                 color: Colors.greenAccent.withOpacity(0.4),
-          //                 blurRadius: 4.r,
-          //                 spreadRadius: 1.r,
-          //               ),
-          //             ],
-          //           ),
-          //         ),
-          //         SizedBox(width: 6.w),
-          //         // Text(
-          //         //   'Ready',
-          //         //   style: TextStyle(
-          //         //     fontSize: 10.sp,
-          //         //     fontWeight: FontWeight.w500,
-          //         //     color: Colors.white.withOpacity(0.9),
-          //         //     letterSpacing: 0.2,
-          //         //   ),
-          //         // ),
-          //       ],
-          //     ),
-          //   ),
+       
           //  ],
         ],
       ),
@@ -659,7 +621,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                               borderRadius: BorderRadius.circular(6.r),
                             ),
                             child: Text(
-                              '${_textPrefix} 1',
+                              '$_textPrefix 1',
                               style: TextStyle(
                                 color: _textColor,
                                 fontSize: _fontSize.sp,
@@ -669,45 +631,6 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                           ),
                         ),
 
-                      // Orientation Indicator
-                      // Positioned(
-                      //   bottom: 8.h,
-                      //   right: 8.w,
-                      //   child: Container(
-                      //     padding: EdgeInsets.symmetric(
-                      //       horizontal: 12.w,
-                      //       vertical: 6.h,
-                      //     ),
-                      //     decoration: BoxDecoration(
-                      //       color:
-                      //           _isPortraitMode
-                      //               ? AppColors.primaryPink
-                      //               : AppColors.primaryBlue,
-                      //       borderRadius: BorderRadius.circular(12.r),
-                      //     ),
-                      //     child: Row(
-                      //       mainAxisSize: MainAxisSize.min,
-                      //       children: [
-                      //         Icon(
-                      //           _isPortraitMode
-                      //               ? Icons.stay_current_portrait
-                      //               : Icons.stay_current_landscape,
-                      //           size: 12.sp,
-                      //           color: Colors.white,
-                      //         ),
-                      //         SizedBox(width: 4.w),
-                      //         Text(
-                      //           _isPortraitMode ? 'Portrait' : 'Landscape',
-                      //           style: TextStyle(
-                      //             color: Colors.white,
-                      //             fontSize: 10.sp,
-                      //             fontWeight: FontWeight.bold,
-                      //           ),
-                      //         ),
-                      //       ],
-                      //     ),
-                      //   ),
-                      // ),
                     ],
                   ),
                 ),
@@ -2233,162 +2156,3 @@ class CustomSliderThumbShape extends SliderComponentShape {
     canvas.drawCircle(center, enabledThumbRadius - 1, borderPaint);
   }
 }
-
-
-
-
-
-
-// text overlaping function    
-
-
-  // Widget _buildTextOverlaySection() {
-  //   return Container(
-  //     padding: EdgeInsets.all(24.r),
-  //     decoration: BoxDecoration(
-  //       color: Colors.white,
-  //       borderRadius: BorderRadius.circular(20.r),
-  //       boxShadow: [
-  //         BoxShadow(
-  //           color: AppColors.shadowLight,
-  //           blurRadius: 20.r,
-  //           offset: Offset(0, 8.h),
-  //         ),
-  //       ],
-  //     ),
-  //     child: Column(
-  //       crossAxisAlignment: CrossAxisAlignment.start,
-  //       children: [
-  //         Row(
-  //           children: [
-  //             Container(
-  //               padding: EdgeInsets.all(8.r),
-  //               decoration: BoxDecoration(
-  //                 gradient: AppColors.accentGradient,
-  //                 borderRadius: BorderRadius.circular(8.r),
-  //               ),
-  //               child: Icon(
-  //                 Icons.text_fields,
-  //                 color: Colors.white,
-  //                 size: 20.sp,
-  //               ),
-  //             ),
-  //             SizedBox(width: 12.w),
-  //             Expanded(
-  //               child: Text(
-  //                 'Text Overlay',
-  //                 style: TextStyle(
-  //                   fontSize: 18.sp,
-  //                   fontWeight: FontWeight.bold,
-  //                   color: AppColors.textPrimary,
-  //                 ),
-  //               ),
-  //             ),
-  //             Switch(
-  //               value: _useTextOverlay,
-  //               onChanged:
-  //                   _isProcessing
-  //                       ? null
-  //                       : (value) {
-  //                         setState(() {
-  //                           _useTextOverlay = value;
-  //                         });
-  //                       },
-  //               activeColor: AppColors.primaryPink,
-  //             ),
-  //           ],
-  //         ),
-  //         if (_useTextOverlay) ...[
-  //           SizedBox(height: 20.h),
-  //           // Text prefix input
-  //           TextField(
-  //             controller: _textController,
-  //             enabled: !_isProcessing,
-  //             decoration: InputDecoration(
-  //               labelText: 'Text Prefix (e.g., Part, Clip)',
-  //               hintText: 'Part',
-  //               border: OutlineInputBorder(
-  //                 borderRadius: BorderRadius.circular(12.r),
-  //               ),
-  //               contentPadding: EdgeInsets.all(16.r),
-  //             ),
-  //             onChanged: (value) {
-  //               setState(() {
-  //                 _textPrefix = value.isEmpty ? 'Part' : value;
-  //               });
-  //             },
-  //           ),
-  //           SizedBox(height: 16.h),
-  //           // Text position dropdown
-  //           DropdownButtonFormField<TextPosition>(
-  //             value: _textPosition,
-  //             decoration: InputDecoration(
-  //               labelText: 'Text Position',
-  //               border: OutlineInputBorder(
-  //                 borderRadius: BorderRadius.circular(12.r),
-  //               ),
-  //               contentPadding: EdgeInsets.all(16.r),
-  //             ),
-  //             items: [
-  //               DropdownMenuItem(
-  //                 value: TextPosition.topCenter,
-  //                 child: Text('Top Center'),
-  //               ),
-  //               DropdownMenuItem(
-  //                 value: TextPosition.topLeft,
-  //                 child: Text('Top Left'),
-  //               ),
-  //               DropdownMenuItem(
-  //                 value: TextPosition.topRight,
-  //                 child: Text('Top Right'),
-  //               ),
-  //               DropdownMenuItem(
-  //                 value: TextPosition.bottomCenter,
-  //                 child: Text('Bottom Center'),
-  //               ),
-  //               DropdownMenuItem(
-  //                 value: TextPosition.bottomLeft,
-  //                 child: Text('Bottom Left'),
-  //               ),
-  //               DropdownMenuItem(
-  //                 value: TextPosition.bottomRight,
-  //                 child: Text('Bottom Right'),
-  //               ),
-  //             ],
-  //             onChanged:
-  //                 _isProcessing
-  //                     ? null
-  //                     : (value) {
-  //                       setState(() {
-  //                         _textPosition = value!;
-  //                       });
-  //                     },
-  //           ),
-  //           SizedBox(height: 16.h),
-  //           // Font size slider
-  //           Row(
-  //             children: [
-  //               Text('Font Size: ${_fontSize.round()}px'),
-  //               Expanded(
-  //                 child: Slider(
-  //                   value: _fontSize,
-  //                   min: 16.0,
-  //                   max: 48.0,
-  //                   divisions: 16,
-  //                   onChanged:
-  //                       _isProcessing
-  //                           ? null
-  //                           : (value) {
-  //                             setState(() {
-  //                               _fontSize = value;
-  //                             });
-  //                           },
-  //                 ),
-  //               ),
-  //             ],
-  //           ),
-  //         ],
-  //       ],
-  //     ),
-  //   );
-  // }

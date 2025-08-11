@@ -44,7 +44,9 @@ class ProcessedVideo {
   });
 
   String get formattedSize {
-    if (fileSizeInBytes < 1024) return '${fileSizeInBytes} B';
+    if (fileSizeInBytes < 1024) {
+      return '$fileSizeInBytes B';
+    }
     if (fileSizeInBytes < 1024 * 1024)
       return '${(fileSizeInBytes / 1024).toStringAsFixed(1)} KB';
     return '${(fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';

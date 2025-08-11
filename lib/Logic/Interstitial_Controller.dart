@@ -1,6 +1,5 @@
 // ignore_for_file: file_names
 
-import 'package:firebase_remote_config/firebase_remote_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
@@ -20,7 +19,7 @@ class InterstitialAdsController {
   int _showAfterClicks = 2; // Default value
 
   // Test ad unit ID for development
-  final String _testAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
+ final String _testAdUnitId = 'ca-app-pub-3940256099942544/1033173712';
   // Your production ad unit ID
   final String _productionAdUnitId = 'ca-app-pub-7772180367051787/7636645925';
 

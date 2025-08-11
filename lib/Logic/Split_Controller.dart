@@ -2,6 +2,8 @@
 
 // video_splitter_service.dart
 
+import 'dart:math' as math;
+
 import 'package:file_picker/file_picker.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
@@ -202,15 +204,18 @@ Future<void> splitVideoClipWithOverlays(
     }
 
     // In splitVideoClipWithOverlays, modify the encoding options:
-    commandParts.addAll([
+  commandParts.addAll([
       '-t $duration',
       '-c:v libx264',
-      '-preset superfast', // Changed from ultrafast
-      '-crf 28', // Changed from 23 (higher = smaller file)
-      '-threads 2', // Limit threads
-      '-bufsize 1M', // Limit buffer
-      '-maxrate 2M', // Limit bitrate
-      '-c:a copy',
+      '-preset veryfast', // Changed from superfast
+      '-crf 30', // Higher compression for large files
+      '-threads 1', // Reduced threads to save memory
+      '-bufsize 512k', // Smaller buffer
+      '-maxrate 1M', // Lower bitrate for large files
+      '-pix_fmt yuv420p', // Force compatible pixel format
+      '-movflags +faststart', // Optimize for streaming
+      '-c:a aac', // Re-encode audio to save space
+      '-b:a 128k', // Lower audio bitrate
       '-avoid_negative_ts make_zero',
       '-y "$escapedOutput"',
     ]);
@@ -352,9 +357,7 @@ Future<void> splitVideoClipWithOverlays(
       await splitVideoClip(inputPath, outputPath, startTime, duration);
     }
   }
-
-// Modified splitVideo method - save to session storage instead of gallery
-  Future<void> splitVideo({
+Future<void> splitVideo({
     required String videoPath,
     required int clipDurationInSeconds,
     bool useWatermark = false,
@@ -373,8 +376,11 @@ Future<void> splitVideoClipWithOverlays(
       final file = File(videoPath);
       final fileSizeInMB = await file.length() / (1024 * 1024);
 
-      if (fileSizeInMB > 500) {
-        throw Exception('Video file too large. Please use a smaller video.');
+      // Updated file size limit
+      if (fileSizeInMB > 2000) {
+        throw Exception(
+          'Video file too large. Please use a smaller video (max 2GB).',
+        );
       }
 
       _updateProgress(
@@ -392,7 +398,16 @@ Future<void> splitVideoClipWithOverlays(
         throw Exception('Could not determine video duration');
       }
 
-      final totalClips = (videoDuration / clipDurationInSeconds).ceil();
+      // Adjust clip duration for very large files
+      int adjustedClipDuration = clipDurationInSeconds;
+      if (fileSizeInMB > 1000) {
+        adjustedClipDuration = math.min(
+          clipDurationInSeconds,
+          300,
+        ); // Max 5 min clips for large videos
+      }
+
+      final totalClips = (videoDuration / adjustedClipDuration).ceil();
 
       _updateProgress(
         VideoSplitterProgress(
@@ -404,58 +419,47 @@ Future<void> splitVideoClipWithOverlays(
         ),
       );
 
-      // Create session directory instead of temp directory
+      // Create session directory
       final sessionDir = await _createVideoSession();
 
-      for (int i = 0; i < totalClips; i++) {
-        final startTime = i * clipDurationInSeconds;
-        final outputPath = '${sessionDir.path}/clip_${i + 1}.mp4';
-        final textContent = useTextOverlay ? '$textPrefix ${i + 1}' : '';
-
-        _updateProgress(
-          VideoSplitterProgress(
-            currentClip: i + 1,
-            totalClips: totalClips,
-            progress: i / totalClips,
-            statusText: 'Processing clip ${i + 1} of $totalClips...',
-            isProcessing: true,
-          ),
+      // Choose processing method based on file size
+      if (fileSizeInMB > 1000) {
+        // Use chunked processing for large videos (>1GB)
+        await _processLargeVideo(
+          videoPath: videoPath,
+          clipDurationInSeconds: adjustedClipDuration,
+          videoDuration: videoDuration,
+          sessionDir: sessionDir,
+          totalClips: totalClips,
+          fileSizeInMB: fileSizeInMB,
+          useWatermark: useWatermark,
+          watermarkPath: watermarkPath,
+          watermarkOpacity: watermarkOpacity,
+          watermarkPosition: watermarkPosition,
+          useTextOverlay: useTextOverlay,
+          textPrefix: textPrefix,
+          textPosition: textPosition,
+          fontSize: fontSize,
+          textColor: textColor,
+          isPortraitMode: isPortraitMode,
         );
-
-        // Process video clip
-        if (useWatermark || useTextOverlay || isPortraitMode) {
-          await splitVideoClipWithOverlays(
-            videoPath,
-            outputPath,
-            startTime,
-            clipDurationInSeconds,
-            watermarkPath: useWatermark ? watermarkPath : null,
-            watermarkOpacity: watermarkOpacity,
-            watermarkPosition: watermarkPosition,
-            useTextOverlay: useTextOverlay,
-            textContent: textContent,
-            textPosition: textPosition,
-            fontSize: fontSize,
-            textColor: textColor,
-            isPortraitMode: isPortraitMode,
-          );
-        } else {
-          await splitVideoClip(
-            videoPath,
-            outputPath,
-            startTime,
-            clipDurationInSeconds,
-          );
-        }
-
-        _updateProgress(
-          VideoSplitterProgress(
-            currentClip: i + 1,
-            totalClips: totalClips,
-            progress: (i + 1) / totalClips,
-            statusText: 'Clip ${i + 1} processed successfully!',
-            isProcessing: true,
-          ),
+      } else {
+        // Use standard processing for smaller videos
+        await _processStandardVideo(
+          videoPath: videoPath,
+          clipDurationInSeconds: adjustedClipDuration,
+          sessionDir: sessionDir,
+          totalClips: totalClips,
+          useWatermark: useWatermark,
+          watermarkPath: watermarkPath,
+          watermarkOpacity: watermarkOpacity,
+          watermarkPosition: watermarkPosition,
+          useTextOverlay: useTextOverlay,
+          textPrefix: textPrefix,
+          textPosition: textPosition,
+          fontSize: fontSize,
+          textColor: textColor,
+          isPortraitMode: isPortraitMode,
         );
       }
 
@@ -469,9 +473,6 @@ Future<void> splitVideoClipWithOverlays(
           isProcessing: false,
         ),
       );
-
-      
-      // _showProcessingComplete();
     } catch (e) {
       _updateProgress(
         VideoSplitterProgress(
@@ -484,12 +485,347 @@ Future<void> splitVideoClipWithOverlays(
       );
 
       if (e.toString().contains('OutOfMemory') ||
-          e.toString().contains('SIGSEGV')) {
-        throw Exception('Not enough memory to process this video');
+          e.toString().contains('SIGSEGV') ||
+          e.toString().contains('No space left')) {
+        throw Exception('Not enough memory or storage to process this video');
       }
       rethrow;
     }
   }
+
+  // New method for processing large videos in batches
+  Future<void> _processLargeVideo({
+    required String videoPath,
+    required int clipDurationInSeconds,
+    required double videoDuration,
+    required Directory sessionDir,
+    required int totalClips,
+    required double fileSizeInMB,
+    bool useWatermark = false,
+    String? watermarkPath,
+    double watermarkOpacity = 0.7,
+    WatermarkPosition watermarkPosition = WatermarkPosition.topRight,
+    bool useTextOverlay = false,
+    String textPrefix = 'Part',
+    TextPosition textPosition = TextPosition.topCenter,
+    double fontSize = 24.0,
+    String textColor = 'white',
+    bool isPortraitMode = false,
+  }) async {
+    // Determine batch size based on file size
+    int batchSize;
+    if (fileSizeInMB > 1500) {
+      batchSize = 1; // Process one clip at a time for very large files
+    } else if (fileSizeInMB > 1000) {
+      batchSize = 2; // Process 2 clips at a time
+    } else {
+      batchSize = 3; // Process 3 clips at a time
+    }
+
+    print('Processing large video in batches of $batchSize clips');
+
+    for (int batchStart = 0; batchStart < totalClips; batchStart += batchSize) {
+      final batchEnd = math.min(batchStart + batchSize, totalClips);
+
+      print('Processing batch: clips ${batchStart + 1} to $batchEnd');
+
+      // Process current batch
+      for (int i = batchStart; i < batchEnd; i++) {
+        final startTime = i * clipDurationInSeconds;
+        final outputPath = '${sessionDir.path}/clip_${i + 1}.mp4';
+        final textContent = useTextOverlay ? '$textPrefix ${i + 1}' : '';
+
+        _updateProgress(
+          VideoSplitterProgress(
+            currentClip: i + 1,
+            totalClips: totalClips,
+            progress: i / totalClips,
+            statusText:
+                'Processing large video: clip ${i + 1} of $totalClips...',
+            isProcessing: true,
+          ),
+        );
+
+        try {
+          // Process video clip with memory-efficient settings
+          if (useWatermark || useTextOverlay || isPortraitMode) {
+            await _splitVideoClipWithOverlaysMemoryOptimized(
+              videoPath,
+              outputPath,
+              startTime,
+              clipDurationInSeconds,
+              watermarkPath: useWatermark ? watermarkPath : null,
+              watermarkOpacity: watermarkOpacity,
+              watermarkPosition: watermarkPosition,
+              useTextOverlay: useTextOverlay,
+              textContent: textContent,
+              textPosition: textPosition,
+              fontSize: fontSize,
+              textColor: textColor,
+              isPortraitMode: isPortraitMode,
+            );
+          } else {
+            await _splitVideoClipMemoryOptimized(
+              videoPath,
+              outputPath,
+              startTime,
+              clipDurationInSeconds,
+            );
+          }
+
+          // Memory cleanup after each clip for very large files
+          if (fileSizeInMB > 1500) {
+            await Future.delayed(Duration(milliseconds: 1000));
+          } else if (i > 0 && i % 2 == 0) {
+            await Future.delayed(Duration(milliseconds: 500));
+          }
+        } catch (e) {
+          print('Failed to process clip ${i + 1}: $e');
+          // Try fallback method
+          await _fallbackSplit(
+            videoPath,
+            outputPath,
+            startTime,
+            clipDurationInSeconds,
+          );
+        }
+
+        _updateProgress(
+          VideoSplitterProgress(
+            currentClip: i + 1,
+            totalClips: totalClips,
+            progress: (i + 1) / totalClips,
+            statusText: 'Large video: Clip ${i + 1} processed successfully!',
+            isProcessing: true,
+          ),
+        );
+      }
+
+      // Longer pause between batches for memory cleanup
+      if (batchEnd < totalClips) {
+        print('Batch completed. Waiting for memory cleanup...');
+        await Future.delayed(Duration(seconds: 2));
+      }
+    }
+  }
+
+
+  // Memory-optimized version for large videos
+  Future<void> _splitVideoClipMemoryOptimized(
+    String inputPath,
+    String outputPath,
+    int startTime,
+    int duration,
+  ) async {
+    final escapedInput = inputPath
+        .replaceAll('"', '\\"')
+        .replaceAll("'", "\\'");
+    final escapedOutput = outputPath
+        .replaceAll('"', '\\"')
+        .replaceAll("'", "\\'");
+
+    // Ultra-low memory settings for large files
+    final command =
+        '-ss $startTime -i "$escapedInput" -t $duration '
+        '-c:v libx264 -preset veryfast -crf 32 '
+        '-threads 1 -bufsize 256k -maxrate 800k '
+        '-c:a aac -b:a 96k -ac 1 '
+        '-movflags +faststart -avoid_negative_ts make_zero -y "$escapedOutput"';
+
+    final session = await FFmpegKit.execute(command);
+    final returnCode = await session.getReturnCode();
+
+    if (!ReturnCode.isSuccess(returnCode)) {
+      final logs = await session.getAllLogsAsString();
+      print('FFmpeg split error: ${logs?.substring(0, 300)}...');
+      throw Exception('FFmpeg split error for large video');
+    }
+  }
+
+  // Memory-optimized overlays for large videos
+  Future<void> _splitVideoClipWithOverlaysMemoryOptimized(
+    String inputPath,
+    String outputPath,
+    int startTime,
+    int duration, {
+    String? watermarkPath,
+    double watermarkOpacity = 0.7,
+    WatermarkPosition watermarkPosition = WatermarkPosition.topRight,
+    bool useTextOverlay = false,
+    String textContent = '',
+    TextPosition textPosition = TextPosition.topCenter,
+    double fontSize = 24.0,
+    String textColor = 'white',
+    bool isPortraitMode = false,
+  }) async {
+    final escapedInput = inputPath
+        .replaceAll('"', '\\"')
+        .replaceAll("'", "\\'");
+    final escapedOutput = outputPath
+        .replaceAll('"', '\\"')
+        .replaceAll("'", "\\'");
+
+    String filterComplex = '';
+    String videoFilter = '[0:v]';
+    int filterIndex = 1;
+
+    // Handle portrait mode
+    if (isPortraitMode) {
+      filterComplex +=
+          '$videoFilter scale=608:1080:force_original_aspect_ratio=decrease,pad=608:1080:(ow-iw)/2:(oh-ih)/2:black[v$filterIndex];';
+      videoFilter = '[v$filterIndex]';
+      filterIndex++;
+    }
+
+    // Add watermark
+    if (watermarkPath != null) {
+      final pos = getWatermarkPositionFilter(watermarkPosition);
+      filterComplex +=
+          '[1:v]format=rgba,scale=80:-1,colorchannelmixer=aa=${watermarkOpacity.toStringAsFixed(2)}[wm];';
+      filterComplex +=
+          '$videoFilter[wm]overlay=$pos:format=auto[v$filterIndex];';
+      videoFilter = '[v$filterIndex]';
+      filterIndex++;
+    }
+
+    // Add text overlay
+    if (useTextOverlay && textContent.isNotEmpty) {
+      final escapedText = textContent
+          .replaceAll("'", "\\'")
+          .replaceAll(":", "\\:")
+          .replaceAll("[", "\\[")
+          .replaceAll("]", "\\]");
+
+      final pos = getTextPositionFilter(textPosition, fontSize);
+      filterComplex +=
+          '${videoFilter}drawtext=text=\'$escapedText\':fontsize=${fontSize.round()}:fontcolor=$textColor:$pos:box=1:boxcolor=black@0.5:boxborderw=3[v$filterIndex];';
+      videoFilter = '[v$filterIndex]';
+    }
+
+    filterComplex = filterComplex.replaceAll(RegExp(r';$'), '');
+
+    List<String> commandParts = ['-ss $startTime'];
+    commandParts.add('-i "$escapedInput"');
+
+    if (watermarkPath != null) {
+      commandParts.add('-i "$watermarkPath"');
+    }
+
+    if (filterComplex.isNotEmpty) {
+      commandParts.add('-filter_complex "$filterComplex"');
+      commandParts.add('-map "$videoFilter"');
+      commandParts.add('-map 0:a?');
+    }
+
+    // Ultra memory-efficient settings for large videos
+    commandParts.addAll([
+      '-t $duration',
+      '-c:v libx264',
+      '-preset veryfast',
+      '-crf 34', // Higher compression
+      '-threads 1', // Single thread
+      '-bufsize 128k', // Very small buffer
+      '-maxrate 600k', // Lower bitrate
+      '-c:a aac',
+      '-b:a 96k', // Lower audio bitrate
+      '-ac 1', // Mono audio to save space
+      '-movflags +faststart',
+      '-avoid_negative_ts make_zero',
+      '-y "$escapedOutput"',
+    ]);
+
+    final command = commandParts.join(' ');
+
+    try {
+      final session = await FFmpegKit.execute(command);
+      final returnCode = await session.getReturnCode();
+
+      if (!ReturnCode.isSuccess(returnCode)) {
+        final logs = await session.getAllLogsAsString();
+        print('FFmpeg overlay failed: ${logs?.substring(0, 300)}...');
+        throw Exception('Failed to process video with overlays');
+      }
+    } catch (e) {
+      print('Overlay processing failed for large video: $e');
+      await _splitVideoClipMemoryOptimized(
+        inputPath,
+        outputPath,
+        startTime,
+        duration,
+      );
+    }
+  }
+
+
+Future<void> _processStandardVideo({
+    required String videoPath,
+    required int clipDurationInSeconds,
+    required Directory sessionDir,
+    required int totalClips,
+    bool useWatermark = false,
+    String? watermarkPath,
+    double watermarkOpacity = 0.7,
+    WatermarkPosition watermarkPosition = WatermarkPosition.topRight,
+    bool useTextOverlay = false,
+    String textPrefix = 'Part',
+    TextPosition textPosition = TextPosition.topCenter,
+    double fontSize = 24.0,
+    String textColor = 'white',
+    bool isPortraitMode = false,
+  }) async {
+    for (int i = 0; i < totalClips; i++) {
+      final startTime = i * clipDurationInSeconds;
+      final outputPath = '${sessionDir.path}/clip_${i + 1}.mp4';
+      final textContent = useTextOverlay ? '$textPrefix ${i + 1}' : '';
+
+      _updateProgress(
+        VideoSplitterProgress(
+          currentClip: i + 1,
+          totalClips: totalClips,
+          progress: i / totalClips,
+          statusText: 'Processing clip ${i + 1} of $totalClips...',
+          isProcessing: true,
+        ),
+      );
+
+      // Use your existing methods for standard processing
+      if (useWatermark || useTextOverlay || isPortraitMode) {
+        await splitVideoClipWithOverlays(
+          videoPath,
+          outputPath,
+          startTime,
+          clipDurationInSeconds,
+          watermarkPath: useWatermark ? watermarkPath : null,
+          watermarkOpacity: watermarkOpacity,
+          watermarkPosition: watermarkPosition,
+          useTextOverlay: useTextOverlay,
+          textContent: textContent,
+          textPosition: textPosition,
+          fontSize: fontSize,
+          textColor: textColor,
+          isPortraitMode: isPortraitMode,
+        );
+      } else {
+        await splitVideoClip(
+          videoPath,
+          outputPath,
+          startTime,
+          clipDurationInSeconds,
+        );
+      }
+
+      _updateProgress(
+        VideoSplitterProgress(
+          currentClip: i + 1,
+          totalClips: totalClips,
+          progress: (i + 1) / totalClips,
+          statusText: 'Clip ${i + 1} processed successfully!',
+          isProcessing: true,
+        ),
+      );
+    }
+  }
+
 
   // New method to create session directory
   Future<Directory> _createVideoSession() async {

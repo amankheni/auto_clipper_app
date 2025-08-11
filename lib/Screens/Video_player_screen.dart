@@ -1,3 +1,5 @@
+// ignore_for_file: deprecated_member_use, sized_box_for_whitespace, library_private_types_in_public_api, file_names
+
 import 'dart:io';
 import 'package:auto_clipper_app/Constant/Colors.dart';
 import 'package:flutter/material.dart';
@@ -7,8 +9,7 @@ import 'package:video_player/video_player.dart';
 class VideoPlayerWidget extends StatefulWidget {
   final String videoPath;
 
-  const VideoPlayerWidget({Key? key, required this.videoPath})
-    : super(key: key);
+  const VideoPlayerWidget({super.key, required this.videoPath});
 
   @override
   _VideoPlayerWidgetState createState() => _VideoPlayerWidgetState();
@@ -24,7 +25,6 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
 
   bool _isPlaying = false;
   bool _isInitialized = false;
-  bool _showControls = true;
   String _currentPosition = "00:00";
   String _totalDuration = "00:00";
 
@@ -135,7 +135,7 @@ class _VideoPlayerWidgetState extends State<VideoPlayerWidget>
     return AnimatedBuilder(
       animation: _fadeAnimation,
       builder: (context, child) {
-        return Opacity(
+        return Opacity(  
           opacity: _fadeAnimation.value,
           child: AnimatedBuilder(
             animation: _scaleAnimation,

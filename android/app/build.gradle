@@ -16,7 +16,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace 'com.honorixinnovation.auto_clipper'
-    compileSdk 35
+    compileSdk 36
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -31,9 +31,9 @@ android {
     defaultConfig {
         applicationId "com.honorixinnovation.auto_clipper"
         minSdk 24
-        targetSdk 34
-        versionCode flutter.versionCode
-        versionName flutter.versionName
+        targetSdk 36
+        versionCode 13
+        versionName '1.0.13'
         
         // Performance optimizations
         multiDexEnabled true

@@ -1,3 +1,7 @@
+
+
+// ignore_for_file: file_names
+
 import 'package:auto_clipper_app/comman%20class/remot_config.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -198,7 +202,7 @@ class NativeAdsController {
           },
         ),
         request: const AdRequest(),
-       nativeTemplateStyle: NativeTemplateStyle(
+        nativeTemplateStyle: NativeTemplateStyle(
           templateType: TemplateType.small,
           cornerRadius: 15.0,
           mainBackgroundColor: Colors.white,
@@ -333,3 +337,7 @@ class NativeAdsController {
     }
   }
 }
+
+
+
+

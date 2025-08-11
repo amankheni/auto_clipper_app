@@ -4,17 +4,16 @@
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <uses-permission android:name="android.permission.READ_MEDIA_VISUAL_USER_SELECTED" />
-    <!-- <manifest xmlns:android="http://schemas.android.com/apk/res/android"> -->
+    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />
     
     <!-- Hardware features -->
     <uses-feature android:name="android.hardware.camera" android:required="false" />
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />
 
     <application
-        android:label="Auto Clipper"
+        android:label="Video Clipper"
         android:icon="@mipmap/launcher_icon"
         android:hardwareAccelerated="true"
         android:largeHeap="true"
