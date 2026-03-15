@@ -177,13 +177,21 @@ class _VideoDownloadScreenState extends State<VideoDownloadScreen>
                 height: 100.sp,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(20),
-                  color: Colors.grey[200],
+                  color: Colors.white,
                 ),
                 child: Center(
-                  child: CircularProgressIndicator(
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      AppColors.primaryBlue,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      CircularProgressIndicator(
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          AppColors.primaryPink,
+                        ),
+                      ),
+
+                      Text("Loading Ads"),
+                    ],
                   ),
                 ),
               )

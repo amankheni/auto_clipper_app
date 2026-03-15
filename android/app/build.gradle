@@ -5,6 +5,7 @@ plugins {
     // END: FlutterFire Configuration
     id "org.jetbrains.kotlin.android"
     id "dev.flutter.flutter-gradle-plugin"
+    id "com.google.firebase.crashlytics"
 }
 
 // Load keystore properties
@@ -16,7 +17,7 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace 'com.honorixinnovation.auto_clipper'
-    compileSdk 36
+    compileSdk 35  // Changed from 36 to 35 (Android 15 - stable release)
     ndkVersion flutter.ndkVersion
 
     compileOptions {
@@ -31,9 +32,9 @@ android {
     defaultConfig {
         applicationId "com.honorixinnovation.auto_clipper"
         minSdk 24
-        targetSdk 36
-        versionCode 13
-        versionName '1.0.13'
+        targetSdk 35  // Changed from 36 to 35 (Android 15 - meets Google Play requirement)
+        versionCode 17  // Increment version code for new release
+        versionName '1.0.17'  // Increment version name for new release
         
         // Performance optimizations
         multiDexEnabled true
@@ -157,4 +158,7 @@ dependencies {
     
     // Performance monitoring (optional)
     // implementation 'androidx.benchmark:benchmark-junit4:1.1.1'
+
+    implementation 'com.google.firebase:firebase-crashlytics-ktx'
+    implementation 'com.google.firebase:firebase-analytics-ktx'
 }

@@ -1534,6 +1534,7 @@ class _VideoSplitterScreenState extends State<VideoSplitterScreen>
                   : () async {
                     // Show interstitial ad when button is pressed
                     InterstitialAdsController().handleButtonClick(context);
+
                     // Then proceed with the splitting
                     _startSplitting();
                   },
