@@ -1,18 +1,41 @@
 // ignore_for_file: file_names, deprecated_member_use
 
-import 'dart:async';
 import 'dart:io';
-
-import 'package:auto_clipper_app/Constant/Colors.dart';
-import 'package:auto_clipper_app/Logic/Interstitial_Controller.dart';
-import 'package:auto_clipper_app/Logic/Nativ_controller.dart';
+import 'package:auto_clipper_app/Logic/ad_service.dart';
 import 'package:auto_clipper_app/Logic/video_downlod_controller.dart';
 import 'package:auto_clipper_app/Screens/Video_player_screen.dart';
-import 'package:auto_clipper_app/widget/Native_ads_widget.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:permission_handler/permission_handler.dart';
+
+// ─── Dark palette — FeaturesHubScreen exact ──────────────────────────────────
+const _kDarkBg = Color(0xFF0A0E1A);
+const _kDarkCard = Color(0xFF111827);
+const _kDarkCardAlt = Color(0xFF1F2937);
+const _kGradOrange = Color(0xFFFF6B35);
+const _kGradPink = Color(0xFFE91E63);
+const _kGradPurple = Color(0xFF9C27B0);
+const _kGradCyan = Color(0xFF00BCD4);
+const _kErr = Color(0xFFEF4444);
+const _kSuccess = Color(0xFF22C55E);
+
+const _primaryGradient = LinearGradient(
+  colors: [_kGradOrange, _kGradPink, _kGradPurple],
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+);
+
+// Rotating video card gradients
+const List<List<Color>> _kVidGrads = [
+  [Color(0xFFFF6B35), Color(0xFFE91E63)],
+  [Color(0xFF6C63FF), Color(0xFF9C27B0)],
+  [Color(0xFF25D366), Color(0xFF128C7E)],
+  [Color(0xFFE1306C), Color(0xFF833AB4)],
+  [Color(0xFF00BCD4), Color(0xFF2196F3)],
+];
+
+List<Color> _gc(int i) => _kVidGrads[i % _kVidGrads.length];
 
 class VideoSessionDetailScreen extends StatefulWidget {
   final VideoSession session;
@@ -27,756 +50,137 @@ class VideoSessionDetailScreen extends StatefulWidget {
 class _VideoSessionDetailScreenState extends State<VideoSessionDetailScreen>
     with TickerProviderStateMixin {
   final VideoDownloadController _controller = VideoDownloadController();
-  late AnimationController _animationController;
-  late Animation<Offset> _slideAnimation;
+
+  // Header — same 600ms as FeaturesHubScreen
+  late AnimationController _headerController;
+
+  // Card stagger — same as FeaturesHubScreen
+  List<AnimationController> _cardControllers = [];
+  List<Animation<double>> _cardFadeAnims = [];
+  List<Animation<Offset>> _cardSlideAnims = [];
+
   String _statusMessage = '';
-  final NativeAdsController _nativeAdsController = NativeAdsController();
-  bool _shouldShowAd = false;
-  bool _hasError = false; // Defined the missing variable
-   
-// Defined the missing variable
-  bool _isAdLoading = false; // Corrected typo from _isAdvLoading
 
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      duration: const Duration(milliseconds: 800),
+    _headerController = AnimationController(
+      duration: const Duration(milliseconds: 600),
       vsync: this,
-    );
-
-
-    _slideAnimation = Tween<Offset>(
-      begin: const Offset(0, 0.3),
-      end: Offset.zero,
-    ).animate(
-      CurvedAnimation(parent: _animationController, curve: Curves.easeOutCubic),
-    );
-
-    _animationController.forward();
-    _initializeAndLoadAd();
+    )..forward();
+    _buildCardAnimations();
   }
 
-
-
+  void _buildCardAnimations() {
+    final count = widget.session.videos.length + 1; // +1 for stats card
+    _cardControllers = List.generate(
+      count,
+      (i) => AnimationController(
+        duration: const Duration(milliseconds: 500),
+        vsync: this,
+      ),
+    );
+    _cardFadeAnims =
+        _cardControllers
+            .map(
+              (c) => Tween<double>(
+                begin: 0.0,
+                end: 1.0,
+              ).animate(CurvedAnimation(parent: c, curve: Curves.easeOutBack)),
+            )
+            .toList();
+    _cardSlideAnims =
+        _cardControllers
+            .map(
+              (c) => Tween<Offset>(
+                begin: const Offset(0, 0.3),
+                end: Offset.zero,
+              ).animate(CurvedAnimation(parent: c, curve: Curves.easeOut)),
+            )
+            .toList();
+    // Stagger 200ms + i*150ms — same as FeaturesHubScreen
+    for (int i = 0; i < count; i++) {
+      Future.delayed(Duration(milliseconds: 200 + i * 150), () {
+        if (mounted) _cardControllers[i].forward();
+      });
+    }
+  }
 
   @override
   void dispose() {
-    _animationController.dispose();
+    _headerController.dispose();
+    for (final c in _cardControllers) c.dispose();
     super.dispose();
   }
 
-  Future<void> _initializeAndLoadAd() async {
+  // ─── Actions ─────────────────────────────────────────────────────────────
+
+  Future<void> _downloadToGallery(String path) async {
+    // ✅ FIX 1: mounted check before setState
+    if (!mounted) return;
+    setState(() => _statusMessage = 'Saving...');
+
+    String msg;
     try {
-      // Ensure remote config is ready
-
-      // Initialize ads controller
-      await _nativeAdsController.initializeAds();
-
-      // Wait a bit more for stability
-      await Future.delayed(const Duration(milliseconds: 1000));
-
-      if (mounted) {
-        setState(() {
-          _shouldShowAd = true; // Enable ad widget creation
-        });
-
-        // Small delay before loading
-        await Future.delayed(const Duration(milliseconds: 300));
-
-        if (mounted) {
-          _loadAd();
-        }
-      }
+      msg = await _controller.downloadToGallery(path);
     } catch (e) {
-      if (kDebugMode) {
-        print('Ad initialization error: $e');
-      }
-      if (mounted) {
-        setState(() {
-          _shouldShowAd = true; // Still show widget for retry
-          _hasError = true;
-        });
-      }
+      if (mounted) setState(() => _statusMessage = '');
+      return;
     }
-  }
 
-  Future<void> _loadAd() async {
-    if (!mounted || _isAdLoading) return;
+    // ✅ FIX 2: mounted check after async
+    if (!mounted) return;
+    setState(() => _statusMessage = msg);
 
-    setState(() {
-      _isAdLoading = true;
-      _hasError = false;
-    });
-
-    try {
-      // Double-check initialization
-      if (!_nativeAdsController.isInitialized) {
-        await _nativeAdsController.initializeAds();
-        await Future.delayed(const Duration(milliseconds: 500));
-      }
-
-      await _nativeAdsController.loadNativeAd(
-        onAdLoaded: (ad) {
-          if (mounted) {
-            setState(() {
-              _isAdLoading = false;
-              _hasError = false;
-            });
-          }
-        },
-        onAdFailedToLoad: (error) {
-          if (mounted) {
-            setState(() {
-              _isAdLoading = false;
-              _hasError = true;
-            });
-          }
-        },
-      );
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _isAdLoading = false;
-          _hasError = true;
-        });
-      }
-    }
-  }
-
-  // Copy your existing methods here: _initializeAndLoadAd, _downloadToGallery,
-  // _shareVideo, _previewVideo, _showCustomSnackBar, etc.
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.backgroundColor,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildSessionDetailAppBar(),
-            Expanded(child: _buildSessionDetailContent()),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSessionDetailAppBar() {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primaryOrange.withOpacity(0.2),
-            blurRadius: 12.r,
-            offset: Offset(0, 2.h),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        child: Container(
-          height: 68.h,
-          padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 8.h),
-          child: Row(
-            children: [
-              // Back button
-              GestureDetector(
-                onTap: () => Navigator.of(context).pop(),
-                child: Container(
-                  width: 36.w,
-                  height: 36.h,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.15),
-                    borderRadius: BorderRadius.circular(10.r),
-                  ),
-                  child: Icon(
-                    Icons.arrow_back_ios_new,
-                    color: Colors.white,
-                    size: 16.sp,
-                  ),
-                ),
-              ),
-              SizedBox(width: 12.w),
-
-              // Session icon and title
-              Container(
-                width: 40.w,
-                height: 40.h,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      Colors.white.withOpacity(0.25),
-                      Colors.white.withOpacity(0.15),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(12.r),
-                ),
-                child: Icon(
-                  Icons.video_library_rounded,
-                  color: Colors.white,
-                  size: 20.sp,
-                ),
-              ),
-              SizedBox(width: 12.w),
-
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      widget.session.displayName,
-                      style: TextStyle(
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    Text(
-                      '${widget.session.videos.length} Videos',
-                      style: TextStyle(
-                        fontSize: 13.sp,
-                        color: Colors.white.withOpacity(0.75),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // Delete session button
-              Container(
-                width: 36.w,
-                height: 36.h,
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(10.r),
-                ),
-                child: PopupMenuButton<String>(
-                  icon: Icon(
-                    Icons.more_vert_rounded,
-                    color: Colors.white,
-                    size: 16.sp,
-                  ),
-                  onSelected: (value) {
-                    if (value == 'delete_session') {
-                      _showDeleteSessionDialog();
-                    }
-                  },
-                  itemBuilder:
-                      (context) => [
-                        PopupMenuItem(
-                          value: 'delete_session',
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.delete_outline_rounded,
-                                color: AppColors.errorColor,
-                              ),
-                              SizedBox(width: 12.w),
-                              Text(
-                                'Delete Session',
-                                style: TextStyle(color: AppColors.errorColor),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSessionDetailContent() {
-    return SingleChildScrollView(
-      child: Column(
-        children: [
-          // Session info (reuse your existing _buildEnhancedStorageInfo but for single session)
-          _buildSessionStorageInfo(),
-
-          // Status message
-          if (_statusMessage.isNotEmpty) _buildEnhancedStatusMessage(),
-
-          // Native ad
-          if (_shouldShowAd)
-           NativeAdWidget(
-              height: 100.sp,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: Colors.white,
-              ),
-              margin: EdgeInsets.all(0),
-              backgroundColor: Colors.white,      
-              showLoadingShimmer: false,
-            ),
-
-          // Download all button
-          _buildDownloadAllButton(),
-
-          // Videos list
-          _buildVideosList(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildSessionStorageInfo() {
-    // Similar to your existing _buildEnhancedStorageInfo but for single session
-    return Container(
-      margin: EdgeInsets.all(16.w),
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF1A1A2E), Color(0xFF16213E)],
-        ),
-        borderRadius: BorderRadius.circular(14.r),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 42.w,
-            height: 42.h,
-            decoration: BoxDecoration(
-              gradient: AppColors.primaryGradient,
-              borderRadius: BorderRadius.circular(10.r),
-            ),
-            child: Icon(
-              Icons.video_library_outlined,
-              color: Colors.white,
-              size: 20.sp,
-            ),
-          ),
-          SizedBox(width: 12.w),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Session Details',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.7),
-                    fontSize: 13.sp,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Videos',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 10.sp,
-                            ),
-                          ),
-                          Text(
-                            '${widget.session.videos.length}',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 1.w,
-                      height: 28.h,
-                      color: Colors.white.withOpacity(0.15),
-                    ),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Storage',
-                            style: TextStyle(
-                              color: Colors.white.withOpacity(0.6),
-                              fontSize: 10.sp,
-                            ),
-                          ),
-                          Text(
-                            widget.session.totalSize,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 16.sp,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDownloadAllButton() {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 16.h),
-      child: _buildEnhancedActionButton(
-        icon:
-            _controller.isBulkDownloading
-                ? SizedBox(
-                  width: 20.w,
-                  height: 20.w,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                  ),
-                )
-                : Icon(
-                  Icons.download_rounded,
-                  size: 20.sp,
-                  color: Colors.white,
-                ),
-        label:
-            _controller.isBulkDownloading
-                ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
-                : 'Download All Videos',
-        onTap:
-            _controller.isBulkDownloading ? null : () => _downloadAllVideos(),
-        gradient: AppColors.primaryGradient,
-      ),
-    );
-  }
-
-  Widget _buildVideosList() {
-    return ListView.builder(
-      shrinkWrap: true,
-      physics: NeverScrollableScrollPhysics(),
-      padding: EdgeInsets.symmetric(horizontal: 20.w),
-      itemCount: widget.session.videos.length,
-      itemBuilder: (context, index) {
-        return _buildEnhancedVideoItem(widget.session.videos[index]);
-      },
-    );
-  }
-
-  void _showDeleteSessionDialog() {
-    // Show delete dialog and pop back to previous screen after deletion
-  }
-
-  void _downloadAllVideos() async {
-    final message = await _controller.downloadAllVideosSimple(
-      widget.session,
-      context,
-    );
-    setState(() => _statusMessage = message);
-  }
-
-   Widget _buildEnhancedActionButton({
-    required Widget icon,
-    required String label,
-    required VoidCallback? onTap,
-    required Gradient gradient,
-  }) {
-    return Container(
-      height: 48.h,
-      decoration: BoxDecoration(
-        gradient:
-            onTap != null
-                ? gradient
-                : LinearGradient(
-                  colors: [
-                    AppColors.textTertiary.withOpacity(0.3),
-                    AppColors.textTertiary.withOpacity(0.2),
-                  ],
-                ),
-        borderRadius: BorderRadius.circular(14.r),
-        boxShadow:
-            onTap != null
-                ? [
-                  BoxShadow(
-                    color:
-                        gradient == AppColors.primaryGradient
-                            ? AppColors.primaryOrange.withOpacity(0.3)
-                            : AppColors.primaryPink.withOpacity(0.3),
-                    blurRadius: 12.r,
-                    offset: Offset(0, 4.h),
-                  ),
-                ]
-                : null,
-      ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(14.r),
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 16.w),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                icon,
-                if (label.isNotEmpty) ...[
-                  SizedBox(width: 8.w),
-                  Flexible(
-                    child: Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 14.sp,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-   Widget _buildEnhancedVideoItem(ProcessedVideo video) {
-    return Container(
-      margin: EdgeInsets.only(bottom: 16.h),
-      decoration: BoxDecoration(
-        color: AppColors.cardBackground,
-        borderRadius: BorderRadius.circular(20.r),
-      ),
-      child: Column(
-        children: [
-          // Video preview with thumbnail
-          GestureDetector(
-            onTap: () => _previewVideo(video.path),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                Container(
-                  width: double.infinity,
-                  height: 200.h,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.vertical(
-                      top: Radius.circular(20.r),
-                    ),
-                    image:
-                        video.thumbnailPath != null
-                            ? DecorationImage(
-                              image: FileImage(File(video.thumbnailPath!)),
-                              fit: BoxFit.cover,
-                            )
-                            : null,
-                  ),
-                  child:
-                      video.thumbnailPath == null
-                          ? Icon(
-                            Icons.videocam,
-                            size: 50.sp,
-                            color: Colors.white,
-                          )
-                          : null,
-                ),
-                Positioned(
-                  child: Icon(
-                    Icons.play_circle_filled,
-                    size: 50.sp,
-                    color: Colors.white.withOpacity(0.8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          // Video info and actions
-          Padding(
-            padding: EdgeInsets.all(16.r),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  video.name,
-                  style: TextStyle(
-                    fontSize: 16.sp,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                SizedBox(height: 8.h),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      video.formattedSize,
-                      style: TextStyle(fontSize: 12.sp),
-                    ),
-                    Text(
-                      '${video.durationInSeconds}s',
-                      style: TextStyle(fontSize: 12.sp),
-                    ),
-                  ],
-                ),
-                SizedBox(height: 16.h),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildActionButton(
-                        icon: Icons.download,
-                        label: 'Download',
-                        onPressed: () => _downloadToGallery(video.path),
-                      ),
-                    ),
-                    SizedBox(width: 8.w),
-                    Expanded(
-                      child: _buildActionButton(
-                        icon: Icons.share,
-                        label: 'Share',
-                        onPressed: () => _shareVideo(video.path),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-Future<void> _downloadToGallery(String videoPath) async {
-    setState(() {
-      _statusMessage = 'Requesting permissions...';
-    });
-
-    final message = await _controller.downloadToGallery(videoPath);
-
-    setState(() {
-      _statusMessage = message;
-    });
-
-    if (message.contains('successfully')) {
-      _showCustomSnackBar(
-        'Video saved successfully',
-        AppColors.successColor,
-        Icons.check_circle,
-      );
-    } else if (message.contains('permission')) {
+    if (msg.contains('successfully')) {
+      _showSnack('Video saved ✓', _kSuccess, Icons.check_circle);
+    } else if (msg.contains('permission')) {
       _showPermissionDialog();
     } else {
-      _showCustomSnackBar(
-        'Download failed: $message',
-        AppColors.errorColor,
-        Icons.error,
-      );
+      _showSnack('Download failed', _kErr, Icons.error);
     }
 
-    Future.delayed(Duration(seconds: 3), () {
-      if (mounted) {
-        setState(() {
-          _statusMessage = '';
-        });
-      }
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _statusMessage = '');
     });
   }
 
-void _showPermissionDialog() {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20.r),
-          ),
-          title: Row(
-            children: [
-              Container(
-                padding: EdgeInsets.all(8.r),
-                decoration: BoxDecoration(
-                  gradient: AppColors.accentGradient,
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-                child: Icon(Icons.security, color: Colors.white, size: 20.sp),
-              ),
-              SizedBox(width: 12.w),
-              Text(
-                'Permission Required',
-                style: TextStyle(
-                  fontSize: 18.sp,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ],
-          ),
-          content: Text(
-            'Storage permission is required to download videos. Please grant permission in app settings.',
-            style: TextStyle(
-              fontSize: 14.sp,
-              color: AppColors.textSecondary,
-              height: 1.4,
-            ),
-          ),
-          actions: [
-            TextButton(
-              child: Text(
-                'Cancel',
-                style: TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            Container(
-              decoration: BoxDecoration(
-                gradient: AppColors.primaryGradient,
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              child: TextButton(
-                child: Text(
-                  'Open Settings',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14.sp,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  openAppSettings();
-                },
-              ),
-            ),
-          ],
-        );
-      },
-    );
+  Future<void> _downloadAllVideos() async {
+    if (!mounted) return; // ✅
+    try {
+      final msg = await _controller.downloadAllVideosSimple(
+          widget.session, context);
+      if (!mounted) return; // ✅
+      setState(() => _statusMessage = msg);
+    } catch (e) {
+      if (mounted) setState(() => _statusMessage = 'Error: $e');
+    }
   }
 
-   void _showCustomSnackBar(String message, Color color, IconData icon) {
+  Future<void> _shareVideo(String path) async {
+    try {
+      await _controller.shareVideo(path);
+      if (!mounted) return; // ✅
+      _showSnack('Sharing...', _kGradCyan, Icons.share);
+    } catch (e) {
+      if (mounted) setState(() => _statusMessage = 'Share failed: $e');
+    }
+  }
+
+  void _showSnack(String msg, Color color, IconData icon) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(icon, color: Colors.white, size: 20.sp),
-            SizedBox(width: 12.w),
+            Icon(icon, color: Colors.white, size: 18.sp),
+            SizedBox(width: 10.w),
             Expanded(
               child: Text(
-                message,
+                msg,
                 style: TextStyle(
                   fontSize: 14.sp,
-                  fontWeight: FontWeight.w500,
                   color: Colors.white,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
             ),
@@ -788,102 +192,37 @@ void _showPermissionDialog() {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12.r),
         ),
-        duration: Duration(seconds: 2),
+        duration: const Duration(seconds: 2),
       ),
     );
   }
 
-  Future<void> _shareVideo(String videoPath) async {
-    try {
-      await _controller.shareVideo(videoPath);
-      _showCustomSnackBar('Sharing video...', AppColors.infoColor, Icons.share);
-    } catch (e) {
-      setState(() {
-        _statusMessage = 'Failed to share video: $e';
-      });
-    }
-  }
-
-  Widget _buildActionButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    return Expanded(
-      child: Container(
-        height: 48.h,
-        decoration: BoxDecoration(
-          gradient: AppColors.primaryGradient,
-          borderRadius: BorderRadius.circular(14.r),
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: () async {
-              // Show loading dialog
-              showDialog(
-                context: context,
-                barrierDismissible: false,
-
-                builder:
-                    (context) => Center(child: CircularProgressIndicator()),
-              );
-
-              // Wait 1-2 seconds
-              await Future.delayed(Duration(seconds: 1));
-
-              // Show interstitial ad
-              InterstitialAdsController().handleButtonClick(context);
-
-              // Dismiss loader
-              if (Navigator.of(context).canPop()) {
-                Navigator.of(context).pop();
-              }
-
-              // Execute original onPressed
-              onPressed();
-            },
-            borderRadius: BorderRadius.circular(14.r),
-            child: Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16.w),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(icon, size: 20.sp, color: Colors.white),
-                  SizedBox(width: 8.w),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      fontSize: 14.sp,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
-
-   void _previewVideo(String path) {
+  void _previewVideo(String path) {
     Navigator.push(
       context,
       MaterialPageRoute(
         builder:
-            (context) => Scaffold(
+            (_) => Scaffold(
+              backgroundColor: _kDarkBg,
               appBar: AppBar(
-                title: Text('Video Preview'),
+                backgroundColor: Colors.transparent,
+                elevation: 0,
+                iconTheme: const IconThemeData(color: Colors.white),
+                title: Text(
+                  'Preview',
+                  style: TextStyle(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
                 actions: [
                   IconButton(
-                    icon: Icon(Icons.download),
+                    icon: Icon(Icons.download_outlined, color: _kGradOrange),
                     onPressed: () => _downloadToGallery(path),
                   ),
                   IconButton(
-                    icon: Icon(Icons.share),
+                    icon: Icon(Icons.share_outlined, color: _kGradPink),
                     onPressed: () => _shareVideo(path),
                   ),
                 ],
@@ -893,69 +232,645 @@ void _showPermissionDialog() {
       ),
     );
   }
-  
 
-  Widget _buildEnhancedStatusMessage() {
-    if (_statusMessage.isEmpty) return SizedBox.shrink();
+  // ─── Dialogs ─────────────────────────────────────────────────────────────
 
-    final isError =
-        _statusMessage.toLowerCase().contains('error') ||
-        _statusMessage.toLowerCase().contains('failed');
-    final isDownloading = _controller.isBulkDownloading;
+  void _showPermissionDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (_) => Dialog(
+            backgroundColor: _kDarkCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20.r),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(24.r),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(14.r),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [_kGradOrange, _kGradPink],
+                      ),
+                      borderRadius: BorderRadius.circular(14.r),
+                    ),
+                    child: Icon(
+                      Icons.security_rounded,
+                      color: Colors.white,
+                      size: 28.sp,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  Text(
+                    'Permission Required',
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'Storage permission is needed to save videos.',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      color: Colors.white54,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            height: 44.h,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Colors.white54,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () {
+                            Navigator.pop(context);
+                            openAppSettings();
+                          },
+                          child: Container(
+                            height: 44.h,
+                            decoration: BoxDecoration(
+                              gradient: _primaryGradient,
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Open Settings',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
 
-    Color statusColor =
-        isError
-            ? AppColors.errorColor
-            : isDownloading
-            ? AppColors.infoColor
-            : AppColors.successColor;
+  void _showDeleteDialog() {
+    showDialog(
+      context: context,
+      builder:
+          (_) => Dialog(
+            backgroundColor: _kDarkCard,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(20.r),
+            ),
+            child: Padding(
+              padding: EdgeInsets.all(24.r),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(14.r),
+                    decoration: BoxDecoration(
+                      color: _kErr.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(14.r),
+                    ),
+                    child: Icon(
+                      Icons.delete_outline_rounded,
+                      color: _kErr,
+                      size: 28.sp,
+                    ),
+                  ),
+                  SizedBox(height: 14.h),
+                  Text(
+                    'Delete Session',
+                    style: TextStyle(
+                      fontSize: 18.sp,
+                      fontWeight: FontWeight.w800,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 8.h),
+                  Text(
+                    'Delete "${widget.session.displayName}" and all clips?',
+                    style: TextStyle(
+                      fontSize: 13.sp,
+                      color: Colors.white54,
+                      height: 1.4,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => Navigator.pop(context),
+                          child: Container(
+                            height: 44.h,
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Cancel',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Colors.white54,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () async {
+                            Navigator.pop(context);
+                            await _controller.deleteSession(widget.session);
+                            if (mounted) Navigator.pop(context);
+                          },
+                          child: Container(
+                            height: 44.h,
+                            decoration: BoxDecoration(
+                              color: _kErr,
+                              borderRadius: BorderRadius.circular(12.r),
+                            ),
+                            child: Center(
+                              child: Text(
+                                'Delete',
+                                style: TextStyle(
+                                  fontSize: 14.sp,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+    );
+  }
 
-    IconData statusIcon =
-        isError
-            ? Icons.error_outline
-            : isDownloading
-            ? Icons.download
-            : Icons.check_circle_outline;
+  // ─── Build ────────────────────────────────────────────────────────────────
 
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: _kDarkBg,
+      body: SafeArea(
+        child: CustomScrollView(
+          physics: const BouncingScrollPhysics(),
+          slivers: [
+            // ── Header — same structure as FeaturesHubScreen ──────────────
+            SliverToBoxAdapter(
+              child: FadeTransition(
+                opacity: _headerController,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20.w, 24.h, 20.w, 8.h),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      // Back + icon + title + menu
+                      Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () => Navigator.pop(context),
+                            child: Container(
+                              padding: EdgeInsets.all(10.w),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(0.08),
+                                borderRadius: BorderRadius.circular(12.r),
+                                border: Border.all(
+                                  color: Colors.white.withOpacity(0.12),
+                                ),
+                              ),
+                              child: Icon(
+                                Icons.arrow_back_ios_new,
+                                color: Colors.white54,
+                                size: 16.sp,
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Container(
+                            padding: EdgeInsets.all(10.w),
+                            decoration: BoxDecoration(
+                              gradient: const LinearGradient(
+                                colors: [_kGradOrange, _kGradPink],
+                              ),
+                              borderRadius: BorderRadius.circular(14.r),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: _kGradPink.withOpacity(0.4),
+                                  blurRadius: 12,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Icon(
+                              Icons.video_library_rounded,
+                              color: Colors.white,
+                              size: 22.sp,
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  widget.session.displayName,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20.sp,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: -0.5,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Text(
+                                  '${widget.session.videos.length} clips  •  ${widget.session.totalSize}',
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 13.sp,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(12.r),
+                              border: Border.all(
+                                color: Colors.white.withOpacity(0.12),
+                              ),
+                            ),
+                            child: PopupMenuButton<String>(
+                              icon: Icon(
+                                Icons.more_vert_rounded,
+                                color: Colors.white54,
+                                size: 20.sp,
+                              ),
+                              padding: EdgeInsets.all(8.w),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12.r),
+                              ),
+                              color: _kDarkCardAlt,
+                              onSelected: (v) {
+                                if (v == 'delete') _showDeleteDialog();
+                              },
+                              itemBuilder:
+                                  (_) => [
+                                    PopupMenuItem(
+                                      value: 'delete',
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: EdgeInsets.all(6.r),
+                                            decoration: BoxDecoration(
+                                              color: _kErr.withOpacity(0.12),
+                                              borderRadius:
+                                                  BorderRadius.circular(8.r),
+                                            ),
+                                            child: Icon(
+                                              Icons.delete_outline_rounded,
+                                              color: _kErr,
+                                              size: 16.sp,
+                                            ),
+                                          ),
+                                          SizedBox(width: 10.w),
+                                          Text(
+                                            'Delete Session',
+                                            style: TextStyle(
+                                              color: _kErr,
+                                              fontSize: 14.sp,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 20.h),
+
+                      // Promo banner — same as FeaturesHubScreen
+                      Container(
+                        padding: EdgeInsets.all(14.w),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              _kGradOrange.withOpacity(0.15),
+                              _kGradPink.withOpacity(0.08),
+                            ],
+                          ),
+                          borderRadius: BorderRadius.circular(14.r),
+                          border: Border.all(
+                            color: _kGradOrange.withOpacity(0.2),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Text('🎬', style: TextStyle(fontSize: 22.sp)),
+                            SizedBox(width: 10.w),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    '${widget.session.videos.length} Processed Clips',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 13.sp,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                  Text(
+                                    'Download • Share • Preview each clip',
+                                    style: TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 11.sp,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(height: 20.h),
+                      AdService.nativeWidget(
+                        adId: 'vide_session_medium_1',
+                        isLarge: false,
+                        showLabel: false,
+                        margin: const EdgeInsets.only(bottom: 8),
+                        context: context,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Stats card ────────────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: _staggerWrap(
+                0,
+                Padding(
+                  padding: EdgeInsets.fromLTRB(20.w, 8.h, 20.w, 0),
+                  child: _buildStatsCard(),
+                ),
+              ),
+            ),
+
+            // ── Status banner ─────────────────────────────────────────────
+            if (_statusMessage.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 0),
+                  child: _buildStatusBanner(),
+                ),
+              ),
+
+            // ── Download All btn ──────────────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 0),
+                child: _buildDownloadAllBtn(),
+              ),
+            ),
+
+            // ── Video cards — staggered like FeaturesHubScreen ────────────
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(20.w, 16.h, 20.w, 30.h),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) => _staggerWrap(
+                    i + 1,
+                    _buildVideoCard(i, widget.session.videos[i]),
+                  ),
+                  childCount: widget.session.videos.length,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ─── Stagger wrapper ──────────────────────────────────────────────────────
+
+  Widget _staggerWrap(int i, Widget child) {
+    if (i >= _cardFadeAnims.length) return child;
+    return AnimatedBuilder(
+      animation: _cardFadeAnims[i],
+      builder:
+          (_, __) => SlideTransition(
+            position: _cardSlideAnims[i],
+            child: FadeTransition(opacity: _cardFadeAnims[i], child: child),
+          ),
+    );
+  }
+
+  // ─── Stats card ───────────────────────────────────────────────────────────
+
+  Widget _buildStatsCard() {
     return Container(
-      margin: EdgeInsets.symmetric(horizontal: 20.w, vertical: 12.h),
       padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [statusColor.withOpacity(0.1), statusColor.withOpacity(0.05)],
-          begin: Alignment.centerLeft,
-          end: Alignment.centerRight,
-        ),
+        color: _kDarkCard,
         borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: statusColor.withOpacity(0.3), width: 1),
+        border: Border.all(color: Colors.white.withOpacity(0.07)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 12.r,
+            offset: Offset(0, 4.h),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          if (isDownloading)
+          Container(
+            padding: EdgeInsets.all(12.r),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [_kGradOrange, _kGradPink],
+              ),
+              borderRadius: BorderRadius.circular(12.r),
+              boxShadow: [
+                BoxShadow(
+                  color: _kGradOrange.withOpacity(0.3),
+                  blurRadius: 10.r,
+                  offset: Offset(0, 4.h),
+                ),
+              ],
+            ),
+            child: Icon(
+              Icons.video_library_rounded,
+              color: Colors.white,
+              size: 22.sp,
+            ),
+          ),
+          SizedBox(width: 14.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Session Overview',
+                  style: TextStyle(
+                    fontSize: 12.sp,
+                    color: Colors.white38,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Row(
+                  children: [
+                    _statItem(
+                      '${widget.session.videos.length}',
+                      'Videos',
+                      _kGradOrange,
+                    ),
+                    Container(
+                      width: 1,
+                      height: 30.h,
+                      color: Colors.white.withOpacity(0.08),
+                      margin: EdgeInsets.symmetric(horizontal: 16.w),
+                    ),
+                    _statItem(
+                      widget.session.totalSize,
+                      'Storage',
+                      _kGradPurple,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statItem(String val, String lbl, Color c) => Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(
+        val,
+        style: TextStyle(
+          fontSize: 16.sp,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+      Text(
+        lbl,
+        style: TextStyle(
+          fontSize: 11.sp,
+          color: Colors.white38,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+    ],
+  );
+
+  // ─── Status banner ────────────────────────────────────────────────────────
+
+  Widget _buildStatusBanner() {
+    final isErr =
+        _statusMessage.toLowerCase().contains('error') ||
+        _statusMessage.toLowerCase().contains('failed');
+    final isDown = _controller.isBulkDownloading;
+    final color =
+        isErr
+            ? _kErr
+            : isDown
+            ? _kGradCyan
+            : _kSuccess;
+    return Container(
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.10),
+        borderRadius: BorderRadius.circular(14.r),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        children: [
+          if (isDown)
             SizedBox(
-              width: 24.w,
-              height: 24.w,
+              width: 18.w,
+              height: 18.w,
               child: CircularProgressIndicator(
-                strokeWidth: 2.5,
-                valueColor: AlwaysStoppedAnimation<Color>(statusColor),
+                strokeWidth: 2,
+                valueColor: AlwaysStoppedAnimation(color),
               ),
             )
           else
-            Container(
-              padding: EdgeInsets.all(6.r),
-              decoration: BoxDecoration(
-                color: statusColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8.r),
-              ),
-              child: Icon(statusIcon, color: statusColor, size: 16.sp),
+            Icon(
+              isErr ? Icons.error_outline : Icons.check_circle_outline,
+              color: color,
+              size: 18.sp,
             ),
-          SizedBox(width: 12.w),
+          SizedBox(width: 10.w),
           Expanded(
             child: Text(
               _statusMessage,
               style: TextStyle(
-                fontSize: 14.sp,
-                color: statusColor,
+                fontSize: 13.sp,
+                color: color,
                 fontWeight: FontWeight.w500,
               ),
             ),
@@ -965,4 +880,493 @@ void _showPermissionDialog() {
     );
   }
 
+  // ─── Download All ─────────────────────────────────────────────────────────
+
+  Widget _buildDownloadAllBtn() {
+    return GestureDetector(
+      onTap: _controller.isBulkDownloading ? null : _downloadAllVideos,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        height: 54.h,
+        decoration: BoxDecoration(
+          gradient: _controller.isBulkDownloading ? null : _primaryGradient,
+          color:
+              _controller.isBulkDownloading
+                  ? Colors.white.withOpacity(0.06)
+                  : null,
+          borderRadius: BorderRadius.circular(16.r),
+          border:
+              _controller.isBulkDownloading
+                  ? Border.all(color: Colors.white.withOpacity(0.10))
+                  : null,
+          boxShadow:
+              _controller.isBulkDownloading
+                  ? []
+                  : [
+                    BoxShadow(
+                      color: _kGradPink.withOpacity(0.4),
+                      blurRadius: 20.r,
+                      offset: Offset(0, 8.h),
+                    ),
+                    BoxShadow(
+                      color: _kGradOrange.withOpacity(0.2),
+                      blurRadius: 30.r,
+                      offset: Offset(0, 12.h),
+                    ),
+                  ],
+        ),
+        child: Center(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_controller.isBulkDownloading)
+                SizedBox(
+                  width: 18.w,
+                  height: 18.w,
+                  child: const CircularProgressIndicator(
+                    strokeWidth: 2.5,
+                    valueColor: AlwaysStoppedAnimation(Colors.white54),
+                  ),
+                )
+              else
+                Icon(Icons.download_rounded, color: Colors.white, size: 20.sp),
+              SizedBox(width: 8.w),
+              Text(
+                _controller.isBulkDownloading
+                    ? 'Downloading ${_controller.downloadProgress}/${_controller.totalDownloads}'
+                    : 'Download All ${widget.session.videos.length} Clips',
+                style: TextStyle(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      _controller.isBulkDownloading
+                          ? Colors.white38
+                          : Colors.white,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ─── Video card — _FeatureCardWidget style ────────────────────────────────
+
+  Widget _buildVideoCard(int index, ProcessedVideo video) {
+    final g = _gc(index);
+    return _PressableCard(
+      gradientColors: g,
+      onTap: () => _previewVideo(video.path),
+      child: Column(
+        children: [
+          // Top strip + decorative circles + thumbnail — same as FeaturesHubScreen
+          Container(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  g[0].withOpacity(0.25),
+                  g[1].withOpacity(0.1),
+                  Colors.transparent,
+                ],
+              ),
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(20.r),
+                topRight: Radius.circular(20.r),
+              ),
+            ),
+            child: Stack(
+              children: [
+                // Decorative circles
+                Positioned(
+                  right: -20,
+                  top: -20,
+                  child: Container(
+                    width: 100.w,
+                    height: 100.w,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: g[0].withOpacity(0.08),
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: 20,
+                  bottom: -10,
+                  child: Container(
+                    width: 60.w,
+                    height: 60.w,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: g[1].withOpacity(0.06),
+                    ),
+                  ),
+                ),
+
+                // Thumbnail overlay if available
+                if (video.thumbnailPath != null)
+                  Positioned.fill(
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.only(
+                        topLeft: Radius.circular(20.r),
+                        topRight: Radius.circular(20.r),
+                      ),
+                      child: Stack(
+                        children: [
+                          Image.file(
+                            File(video.thumbnailPath!),
+                            width: double.infinity,
+                            height: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                          Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withOpacity(0.65),
+                                ],
+                                stops: const [0.4, 1.0],
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                // Content row — same layout as FeaturesHubScreen
+                SizedBox(
+                  height: 120.h,
+                  child: Padding(
+                    padding: EdgeInsets.all(20.w),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(14.w),
+                          decoration: BoxDecoration(
+                            gradient: LinearGradient(colors: g),
+                            borderRadius: BorderRadius.circular(16.r),
+                            boxShadow: [
+                              BoxShadow(
+                                color: g[0].withOpacity(0.4),
+                                blurRadius: 12,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.play_arrow_rounded,
+                            color: Colors.white,
+                            size: 26.sp,
+                          ),
+                        ),
+                        SizedBox(width: 14.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                video.name,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16.sp,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: -0.3,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                              Text(
+                                'Tap to preview',
+                                style: TextStyle(
+                                  color: g[0],
+                                  fontSize: 12.sp,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: 8.w,
+                            vertical: 5.h,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.black.withOpacity(0.4),
+                            borderRadius: BorderRadius.circular(10.r),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.15),
+                            ),
+                          ),
+                          child: Text(
+                            '${video.durationInSeconds}s',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 11.sp,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Description + tags — same as FeaturesHubScreen
+          Padding(
+            padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, 8.h),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Tap to preview, or download & share below.',
+                  style: TextStyle(
+                    color: Colors.white60,
+                    fontSize: 13.sp,
+                    height: 1.5,
+                  ),
+                ),
+                SizedBox(height: 10.h),
+                Wrap(
+                  spacing: 8.w,
+                  runSpacing: 6.h,
+                  children: [
+                    _chip(video.formattedSize, g[0]),
+                    _chip('${video.durationInSeconds}s', g[1]),
+                    _chip('Clip ${index + 1}', Colors.white38),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          // Action buttons
+          Padding(
+            padding: EdgeInsets.fromLTRB(16.w, 4.h, 16.w, 16.h),
+            child: Row(
+              children: [
+                Expanded(
+                  child: _actionBtn(
+                    label: 'Download',
+                    icon: Icons.download_outlined,
+                    gc: g,
+                    onTap: () async {
+                      AdService.showAdThenAction(
+                        onActionComplete: () async {
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.pop(context);
+                          }
+                          _downloadToGallery(video.path);
+                        },
+                      );
+                    },
+                  ),
+                ),
+                SizedBox(width: 10.w),
+                Expanded(
+                  child: _actionBtn(
+                    label: 'Share',
+                    icon: Icons.share_outlined,
+                    gc: g,
+                    isOutlined: true,
+                    onTap: () async {
+                      AdService.showAdThenAction(
+                        onActionComplete: () async {
+                          if (Navigator.of(context).canPop()) {
+                            Navigator.pop(context);
+                          }
+                          _shareVideo(video.path);
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showLoadingOverlay() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder:
+          (_) => Center(
+            child: Container(
+              padding: EdgeInsets.all(24.r),
+              decoration: BoxDecoration(
+                color: _kDarkCard,
+                borderRadius: BorderRadius.circular(16.r),
+              ),
+              child: const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation(_kGradPink),
+              ),
+            ),
+          ),
+    );
+  }
+
+  Widget _chip(String label, Color color) => Container(
+    padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+    decoration: BoxDecoration(
+      color: color.withOpacity(0.12),
+      borderRadius: BorderRadius.circular(20.r),
+      border: Border.all(color: color.withOpacity(0.25)),
+    ),
+    child: Text(
+      label,
+      style: TextStyle(
+        color: color,
+        fontSize: 11.sp,
+        fontWeight: FontWeight.w500,
+      ),
+    ),
+  );
+
+  Widget _actionBtn({
+    required String label,
+    required IconData icon,
+    required List<Color> gc,
+    required VoidCallback onTap,
+    bool isOutlined = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        height: 46.h,
+        decoration: BoxDecoration(
+          gradient: isOutlined ? null : LinearGradient(colors: gc),
+          color: isOutlined ? Colors.white.withOpacity(0.06) : null,
+          borderRadius: BorderRadius.circular(12.r),
+          border: isOutlined ? Border.all(color: gc[0].withOpacity(0.4)) : null,
+          boxShadow:
+              isOutlined
+                  ? []
+                  : [
+                    BoxShadow(
+                      color: gc[0].withOpacity(0.3),
+                      blurRadius: 10.r,
+                      offset: Offset(0, 3.h),
+                    ),
+                  ],
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 17.sp, color: isOutlined ? gc[0] : Colors.white),
+            SizedBox(width: 6.w),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13.sp,
+                fontWeight: FontWeight.w700,
+                color: isOutlined ? gc[0] : Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Pressable Card — exactly _FeatureCardWidget from FeaturesHubScreen ───────
+
+class _PressableCard extends StatefulWidget {
+  final List<Color> gradientColors;
+  final VoidCallback? onTap;
+  final Widget child;
+
+  const _PressableCard({
+    required this.gradientColors,
+    this.onTap,
+    required this.child,
+  });
+
+  @override
+  State<_PressableCard> createState() => _PressableCardState();
+}
+
+class _PressableCardState extends State<_PressableCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _pc;
+  late Animation<double> _sc;
+  bool _pressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _pc = AnimationController(
+      duration: const Duration(milliseconds: 100),
+      vsync: this,
+    );
+    _sc = Tween<double>(
+      begin: 1.0,
+      end: 0.97,
+    ).animate(CurvedAnimation(parent: _pc, curve: Curves.easeOut));
+  }
+
+  @override
+  void dispose() {
+    _pc.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: EdgeInsets.only(bottom: 16.h),
+    child: GestureDetector(
+      onTapDown: (_) {
+        setState(() => _pressed = true);
+        _pc.forward();
+      },
+      onTapUp: (_) {
+        setState(() => _pressed = false);
+        _pc.reverse();
+        widget.onTap?.call();
+      },
+      onTapCancel: () {
+        setState(() => _pressed = false);
+        _pc.reverse();
+      },
+      child: ScaleTransition(
+        scale: _sc,
+        child: Container(
+          decoration: BoxDecoration(
+            color: const Color(0xFF111827),
+            // dark card same as FeaturesHubScreen
+            borderRadius: BorderRadius.circular(20.r),
+            border: Border.all(
+              color:
+                  _pressed
+                      ? widget.gradientColors.first.withOpacity(0.5)
+                      : Colors.white.withOpacity(0.07),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: widget.gradientColors.first.withOpacity(0.08),
+                blurRadius: 20,
+                offset: const Offset(0, 6),
+              ),
+            ],
+          ),
+          child: widget.child,
+        ),
+      ),
+    ),
+  );
 }

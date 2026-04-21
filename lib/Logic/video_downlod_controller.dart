@@ -1,12 +1,14 @@
 // ignore_for_file: avoid_print, deprecated_member_use, unused_local_variable, depend_on_referenced_packages
 
 import 'dart:io';
+import 'package:android_intent_plus/android_intent.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:gallery_saver_plus/gallery_saver.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:video_thumbnail/video_thumbnail.dart';
 import 'package:path/path.dart' as path;
 
@@ -250,8 +252,77 @@ Future<String> downloadToGallery(String videoPath) async {
     }
   }
 
-  
 
+// Platform-specific package IDs (Android) / URL Schemes (iOS)
+  Future<void> shareVideoToApp(String path, String platform) async {
+    final xfile = XFile(path);
+
+    // Android intent package names & iOS URL schemes
+    const androidPkg = {
+      'whatsapp':  'com.whatsapp',
+      'youtube':   'com.google.android.youtube',   // YouTube Studio upload intent
+      'tiktok':    'com.zhiliaoapp.musically',
+      'facebook':  'com.facebook.android',
+      'snapchat':  'com.snapchat.android',
+      'twitter':   'com.twitter.android',
+    };
+    const iosScheme = {
+      'whatsapp':  'whatsapp://send?text=',
+      'youtube':   'youtube://',
+      'tiktok':    'snssdk1233://',
+      'facebook':  'fb://',
+      'snapchat':  'snapchat://',
+      'twitter':   'twitter://post?message=',
+    };
+
+    try {
+      // Try platform-specific share (Android: uses intent chooser filter)
+      if (Platform.isAndroid) {
+        final pkg = androidPkg[platform];
+        if (pkg != null) {
+          // share_plus 9.x supports subject + files + sharePositionOrigin
+          // Direct app share via Android Intent
+          // await Share.shareXFiles(
+          //   [xfile],
+          //   subject: 'Check out this video!',
+          //   // NOTE: share_plus does not expose setPackage directly.
+          //   // For true direct-app share use android_intent_plus:
+          //   //
+          //
+          //   //
+          //   // ADD to pubspec: android_intent_plus: ^4.0.0
+          // );
+          await AndroidIntent(
+            action: 'action_send',
+            package: pkg,
+            type: 'video/*',
+            arguments: <String, dynamic>{
+              'android.intent.extra.STREAM': path,
+              'android.intent.extra.SUBJECT': 'Check out this video!',
+            },
+          ).launch();
+          return;
+        }
+      }
+
+      if (Platform.isIOS) {
+        final scheme = iosScheme[platform];
+        if (scheme != null) {
+          final uri = Uri.parse(scheme);
+          if (await canLaunchUrl(uri)) {
+            // iOS: open app first, then share sheet handles the file
+            await launchUrl(uri);
+            return;
+          }
+        }
+      }
+    } catch (_) {
+      // App not installed — fall through to generic share
+    }
+
+    // Fallback: system share sheet
+    await Share.shareXFiles([xfile], subject: 'Check out this video!');
+  }
 
 
 }
@@ -322,4 +393,6 @@ class ProcessedVideo {
       return '${(fileSizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     }
   }
+
+
 }

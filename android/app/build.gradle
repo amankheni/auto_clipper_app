@@ -17,36 +17,34 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace 'com.honorixinnovation.auto_clipper'
-    compileSdk 35  // Changed from 36 to 35 (Android 15 - stable release)
-    ndkVersion flutter.ndkVersion
+    compileSdk 36
+    ndkVersion "27.2.12479018"
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
-        jvmTarget = '11'
+        jvmTarget = '17'
     }
 
     defaultConfig {
         applicationId "com.honorixinnovation.auto_clipper"
         minSdk 24
-        targetSdk 35  // Changed from 36 to 35 (Android 15 - meets Google Play requirement)
-        versionCode 17  // Increment version code for new release
-        versionName '1.0.17'  // Increment version name for new release
-        
-        // Performance optimizations
+        targetSdk 36
+        versionCode 19
+        versionName '1.0.18'
+
         multiDexEnabled true
-        
-        // Optimize for specific architectures
+
         ndk {
-            abiFilters 'arm64-v8a', 'armeabi-v7a', 'x86_64'
+            abiFilters 'arm64-v8a', 'x86_64'
         }
-        
-        // Manifest placeholders - Remove the deprecated FlutterApplication
+
         manifestPlaceholders = [
-            'largeHeap': 'true'
+                'largeHeap': 'true'
         ]
     }
 
@@ -61,67 +59,63 @@ android {
 
     buildTypes {
         debug {
-          //  applicationIdSuffix ".debug"
             debuggable true
             minifyEnabled false
             shrinkResources false
             multiDexEnabled true
-            
-            // Optimize debug builds
             renderscriptOptimLevel 3
-            
-            // Add debug-specific configurations
             buildConfigField "boolean", "DEBUG_MODE", "true"
         }
-        
+
         release {
             minifyEnabled true
             shrinkResources true
             signingConfig signingConfigs.release
-            
-            // ProGuard configuration
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-            
-            // Release optimizations
             renderscriptOptimLevel 3
             buildConfigField "boolean", "DEBUG_MODE", "false"
-            
-            // R8 is enabled by default when minifyEnabled is true
-            // No need to explicitly set enableR8.fullMode
         }
     }
-    
-    // Packaging options to handle native libraries
-    packagingOptions {
-        pickFirst '**/libc++_shared.so'
-        pickFirst '**/libjsc.so'
-        pickFirst '**/libfbjni.so'
-        pickFirst '**/libflutter.so'
-        pickFirst '**/libglog.so'
-        pickFirst '**/libgtest.so'
-        pickFirst '**/libyoga.so'
-        
-        // Exclude unnecessary files
-        exclude 'META-INF/DEPENDENCIES'
-        exclude 'META-INF/LICENSE'
-        exclude 'META-INF/LICENSE.txt'
-        exclude 'META-INF/license.txt'
-        exclude 'META-INF/NOTICE'
-        exclude 'META-INF/NOTICE.txt'
-        exclude 'META-INF/notice.txt'
-        exclude 'META-INF/ASL2.0'
-        exclude 'META-INF/*.kotlin_module'
+
+    // ✅ FIX 3: packagingOptions → packaging (નવી AGP syntax)
+    packaging {
+        jniLibs {
+            pickFirsts += [
+                    '**/libc++_shared.so',
+                    '**/libjsc.so',
+                    '**/libfbjni.so',
+                    '**/libflutter.so',
+                    '**/libglog.so',
+                    '**/libgtest.so',
+                    '**/libyoga.so',
+            ]
+
+            // ✅ FIX 4: 16KB page size — .so files aligned રહે
+            useLegacyPackaging = false
+        }
+
+        resources {
+            excludes += [
+                    'META-INF/DEPENDENCIES',
+                    'META-INF/LICENSE',
+                    'META-INF/LICENSE.txt',
+                    'META-INF/license.txt',
+                    'META-INF/NOTICE',
+                    'META-INF/NOTICE.txt',
+                    'META-INF/notice.txt',
+                    'META-INF/ASL2.0',
+                    'META-INF/*.kotlin_module',
+            ]
+        }
     }
-    
-    // Lint options
+
     lint {
         checkReleaseBuilds false
         abortOnError false
         disable 'InvalidPackage'
         disable 'MissingTranslation'
     }
-    
-    // Build optimization
+
     buildFeatures {
         buildConfig true
     }
@@ -132,32 +126,20 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring 'com.android.tools:desugar_jdk_libs:2.1.4'
     implementation 'androidx.multidex:multidex:2.0.1'
     implementation 'androidx.lifecycle:lifecycle-process:2.8.6'
     implementation 'androidx.core:core-ktx:1.13.1'
-    
-    // FIXED: Replace deprecated Play Core libraries with compatible alternatives
-    // Use Play Feature Delivery if you need dynamic feature modules
+
     implementation 'com.google.android.play:feature-delivery:2.1.0'
     implementation 'com.google.android.play:feature-delivery-ktx:2.1.0'
-    
-    // Use Play Asset Delivery if you need asset packs
     implementation 'com.google.android.play:asset-delivery:2.2.2'
     implementation 'com.google.android.play:asset-delivery-ktx:2.2.2'
-    
-    // Use Play Install Referrer if you need install referrer info
     implementation 'com.android.installreferrer:installreferrer:2.2'
-    
-    // Use Play In-App Review if you need in-app reviews
     implementation 'com.google.android.play:review:2.0.2'
     implementation 'com.google.android.play:review-ktx:2.0.2'
-    
-    // Use Play In-App Update if you need in-app updates
     implementation 'com.google.android.play:app-update:2.1.0'
     implementation 'com.google.android.play:app-update-ktx:2.1.0'
-    
-    // Performance monitoring (optional)
-    // implementation 'androidx.benchmark:benchmark-junit4:1.1.1'
 
     implementation 'com.google.firebase:firebase-crashlytics-ktx'
     implementation 'com.google.firebase:firebase-analytics-ktx'
